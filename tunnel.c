@@ -479,13 +479,13 @@ int main() {
     pthread_rwlock_init(&deletion, NULL);
     signal(SIGINT, interrupt);
     signal(SIGTERM, interrupt);
-    int server = create_connected_socket(inet_addr("87.176.128.254"), SERVER_PORT);
+    int server = create_connected_socket(inet_addr("192.168.178.124"), SERVER_PORT);
     if (server == -1) {
         fprintf(stderr, "Couldn't connect to adhoc server.\n");
         exit(EXIT_FAILURE);
     }
     change_blocking_mode(server, 1);
-    int peer_listener = create_listen_socket(inet_addr("127.0.0.1"), TUNNEL_PORT);
+    int peer_listener = create_listen_socket(INADDR_ANY, TUNNEL_PORT);
     if (peer_listener == -1) {
         fprintf(stderr, "Couldn't create peer listening socket.\n");
         exit(EXIT_FAILURE);
@@ -500,6 +500,13 @@ int main() {
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
     set_mac(mac_to_local.mac, 0xcc, 0x58, 0x56, 0xd2, 0x55, 0xd3);
     mac_to_local.local_ip = ip_to_int(192, 168, 178, 37);
+    send(server, &mac_to_local, sizeof(mac_to_local), 0);
+
+    set_mac(mac_to_local.mac, 0xfc, 0x60, 0x1d, 0xbb, 0xf0, 0x7a);
+    mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
+    send(server, &mac_to_local, sizeof(mac_to_local), 0);
+    set_mac(mac_to_local.mac, 0x78, 0xdc, 0x81, 0x94, 0x83, 0xbd);
+    mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
 
     struct ReceiveBuffer rx = {.buf = malloc(RECV_BUFSIZE), .pos = 0};
