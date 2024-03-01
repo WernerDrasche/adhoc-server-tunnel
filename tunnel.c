@@ -553,6 +553,7 @@ void *mux_thread_server(void *arg) {
         }
         puts("GAGA");
         uint32_t src_ip = SUBNET_BASE + i;
+        header->src_ip = src_ip;
         header->src_port = src_port;
         puts("BLIBLI");
         log({
