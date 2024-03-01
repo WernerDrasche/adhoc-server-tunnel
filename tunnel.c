@@ -243,6 +243,15 @@ void *dmux_thread(void *arg) {
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
         uint16_t len = header.len;
         pthread_rwlock_rdlock(&deletion);
+        //TODO: only for testing
+        if (header.src_ip == 0) {
+            for (int i = 0; i < SUBNET_SIZE; ++i) {
+                if (thread_groups[i].dest_ip != 0) {
+                    header.src_ip = thread_groups[i].dest_ip;
+                    break;
+                }
+           }
+        }
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
         if (thread_group->dest_ip == 0) {
             log({
@@ -491,15 +500,8 @@ void *mux_thread(void *arg) {
             //TODO: make a reverse hash map for this
             int i;
             for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
-            if (i == SUBNET_SIZE) {
-                log({
-                    printf("UDP message from ");
-                    print_ip(local_ip);
-                    printf(" not in local network");
-                });
-                continue;
-            }
-            header->src_ip = i + SUBNET_BASE;
+            //they send from 255.255.0.0 apparently
+            header->src_ip = i != SUBNET_SIZE ? i + SUBNET_BASE : 0;
             header->src_port = 0; // indicates UDP
         }
         if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
