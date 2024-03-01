@@ -241,9 +241,15 @@ void *dmux_thread(void *arg) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
+        printf("key = %llu\n", key);
         uint16_t len = header.len;
+        printf("len = %u\n", header.len);
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
+        log({
+            printf("sending from ");
+            print_ip(thread_group->dest_ip);
+        });
         if (thread_group->dest_ip == 0) {
             log({
                 printf("WARN: unsolicited connection attempt from ");
@@ -335,9 +341,13 @@ void *dmux_thread(void *arg) {
             pthread_rwlock_unlock(&deletion);
             continue;
         }
-        if (recvall(src, buffer, header.len, &tunnel->stop) == -1) break;
+        if (recvall(src, buffer, header.len, &tunnel->stop) == -1) {
+            pthread_rwlock_unlock(&deletion);
+            break;
+        }
         pthread_rwlock_rdlock(&thread_group->rwlock);
         int i = hmgeti(thread_group->conn_map, key);
+        printf("i = %i\n", i);
         if (i != -1) {
             struct Connection *conn = thread_group->conn_map[i].value;
             pthread_mutex_lock(&conn->lock);
