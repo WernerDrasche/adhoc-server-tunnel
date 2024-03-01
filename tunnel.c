@@ -243,15 +243,6 @@ void *dmux_thread(void *arg) {
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
         uint16_t len = header.len;
         pthread_rwlock_rdlock(&deletion);
-        //TODO: only for testing
-        if (header.src_ip == 0) {
-            for (int i = 0; i < SUBNET_SIZE; ++i) {
-                if (thread_groups[i].dest_ip != 0) {
-                    header.src_ip = thread_groups[i].dest_ip;
-                    break;
-                }
-           }
-        }
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
         if (thread_group->dest_ip == 0) {
             log({
@@ -492,27 +483,8 @@ void *mux_thread(void *arg) {
         int n = 0;
         if (info->protocol == PROTOCOL_TCP) {
             n = recv(src, data, RECV_BUFSIZE, 0);
-            header->src_ip = info->src_ip;
-            header->src_port = info->src_port;
-        } else if (info->protocol == PROTOCOL_UDP) {
-            n = recvfrom(src, data, RECV_BUFSIZE, 0, (struct sockaddr *)&sockaddr, &socklen);
-            uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
-            //TODO: debugging
-            log({
-                printf("UDP fuckery %d bytes from ", n);
-                print_ip(local_ip);
-                puts("");
-            });
-            //TODO: make a reverse hash map for this
-            int i;
-            for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
-            //they send from 255.255.0.0 (first) and 0.0.0.0 (second) apparently
-            header->src_ip = i != SUBNET_SIZE ? i + SUBNET_BASE : 0;
-            header->src_port = 0; // indicates UDP
-        }
-        if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
-        if (n == -1 || n == 0) {
-            if (info->protocol == PROTOCOL_TCP) {
+            if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+            if (n == -1 || n == 0) {
                 log({
                     print_thread(info);
                     printf(" is forwarding a TCP disconnect message\n");
@@ -520,8 +492,28 @@ void *mux_thread(void *arg) {
                 *data = TCP_DISCONNECT;
                 header->len = 0;
                 sendall(dest, buffer, 1 + HEADER_SIZE, 0, 0);
+                break;
             }
-            break;
+            header->src_ip = info->src_ip;
+            header->src_port = info->src_port;
+        } else if (info->protocol == PROTOCOL_UDP) {
+            n = recvfrom(src, data, RECV_BUFSIZE, 0, (struct sockaddr *)&sockaddr, &socklen);
+            if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+            if (n == -1 || n == 0) break;
+            uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
+            //TODO: make a reverse hash map for this
+            int i;
+            for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
+            if (i == SUBNET_SIZE) {
+                log({
+                    printf("UDP message from ");
+                    print_ip(local_ip);
+                    printf(" not in virtual network");
+                });
+                continue;
+            }
+            header->src_ip = i + SUBNET_BASE;
+            header->src_port = 0; // indicates UDP
         }
         header->len = n;
         pthread_mutex_lock(lock);
