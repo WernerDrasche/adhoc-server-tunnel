@@ -505,12 +505,15 @@ void *mux_thread(void *arg) {
         }
         header->len = n;
         pthread_mutex_lock(lock);
+        sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
         log({
             printf("Forwarding %d bytes via ", n);
+            if (info->protocol == PROTOCOL_UDP) {
+                header->src_ip = SUBNET_BASE;
+            }
             print_header(header, false);
             puts("");
         });
-        sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
         pthread_mutex_unlock(lock);
     }
     free(buffer);
