@@ -166,9 +166,14 @@ void delete_group(struct ThreadGroupInfo *group_info) {
         print_ip(group_info->dest_ip);
         puts("");
     });
+    struct ThreadInfo **to_delete = NULL;
     for (struct ThreadInfo *current = group_info->info; current != NULL; current = current->next) {
-        delete_thread(current);
+        arrput(to_delete, current);
     }
+    for (int i = 0; i < arrlen(to_delete); ++i) {
+        delete_thread(to_delete[i]);
+    }
+    arrfree(to_delete);
     hmfree(group_info->conn_map);
     // invalidate the group
     thread_groups[group_info->dest_ip - SUBNET_BASE].dest_ip = 0;
@@ -533,6 +538,7 @@ void *mux_thread_server(void *arg) {
         if (fd == -1) break;
         uint16_t src_port = ntohs(sockaddr.sin_port);
         uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
+        puts("gugu");
         int i;
         for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
         if (i == SUBNET_SIZE) {
@@ -544,6 +550,7 @@ void *mux_thread_server(void *arg) {
             close(fd);
             continue;
         }
+        puts("GAGA");
         uint32_t src_ip = SUBNET_BASE + i;
         header->src_port = src_port;
         log({
@@ -554,10 +561,12 @@ void *mux_thread_server(void *arg) {
         });
         sendall(dest, ctrl_buf, HEADER_SIZE + 1, 0, 0);
         struct Connection *conn = malloc(sizeof(struct Connection));
+        puts("FIFI");
         conn->stream = fd;
         pthread_mutex_init(&conn->lock, NULL);
         struct ThreadGroupInfo *thread_group = info->common;
         struct ThreadInfo *conn_info = malloc(sizeof(struct ThreadInfo));
+        puts("FUFU");
         *conn_info = (struct ThreadInfo){
             .common = info->common,
             .src_ip = src_ip,
@@ -568,6 +577,7 @@ void *mux_thread_server(void *arg) {
         };
         pthread_rwlock_wrlock(&thread_group->rwlock);
         hmput(thread_group->conn_map, connkey(src_ip, src_port, dest_port), conn);
+        puts("baba");
         struct ThreadInfo *current = info->common->info;
         while (current->next != NULL) current = current->next;
         current->next = conn_info;
