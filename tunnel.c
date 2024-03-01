@@ -497,6 +497,12 @@ void *mux_thread(void *arg) {
         } else if (info->protocol == PROTOCOL_UDP) {
             n = recvfrom(src, data, RECV_BUFSIZE, 0, (struct sockaddr *)&sockaddr, &socklen);
             uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
+            //TODO: debugging
+            log({
+                printf("UDP fuckery ");
+                print_ip(local_ip);
+                puts("");
+            });
             //TODO: make a reverse hash map for this
             int i;
             for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
