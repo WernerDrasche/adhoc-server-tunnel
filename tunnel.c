@@ -516,18 +516,21 @@ void *mux_thread(void *arg) {
             if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
             if (n == -1 || n == 0) break;
             uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
-            //TODO: make a reverse hash map for this
-            int i;
-            for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
-            if (i == SUBNET_SIZE) {
-                log({
-                    printf("UDP message from ");
-                    print_ip(local_ip);
-                    printf(" not in virtual network");
-                });
-                continue;
-            }
-            header->src_ip = i + SUBNET_BASE;
+            //local can be virt if emulator on same machine as tunnel
+            if (!is_virt_ip(local_ip)) {
+                //TODO: make a reverse hash map for this
+                int i;
+                for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
+                if (i == SUBNET_SIZE) {
+                    log({
+                        printf("UDP message from ");
+                        print_ip(local_ip);
+                        printf(" not in virtual network\n");
+                    });
+                    continue;
+                }
+                header->src_ip = i + SUBNET_BASE;
+            } else header->src_ip = local_ip;
             header->src_port = 0; // indicates UDP
         }
         header->len = n;
