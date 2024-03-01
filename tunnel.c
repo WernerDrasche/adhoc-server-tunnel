@@ -31,6 +31,7 @@ volatile bool running = true;
 struct Game *games = NULL;
 size_t current_game = -1;
 SceNetAdhocctlGroupName current_group = {0};
+uint32_t local_tunnel_ip = 0;
 
 void print_header(struct Header *header, bool dest_is_local) {
     printf("(");
@@ -257,6 +258,8 @@ void *dmux_thread(void *arg) {
                 print_ip(header.src_ip);
                 puts("");
             });
+            //prevents a segfault
+            recvall(src, buffer, header.len, &tunnel->stop);
             pthread_rwlock_unlock(&deletion);
             continue;
         }
@@ -530,7 +533,7 @@ void *mux_thread(void *arg) {
                     continue;
                 }
                 header->src_ip = i + SUBNET_BASE;
-            } else header->src_ip = local_ip;
+            } else header->src_ip = local_tunnel_ip;
             header->src_port = 0; // indicates UDP
         }
         header->len = n;
@@ -688,7 +691,10 @@ void garbage_collect() {
     pthread_rwlock_unlock(&deletion);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc == 2) {
+        local_tunnel_ip = ntohl(inet_addr(argv[1]));
+    }
     pthread_rwlock_init(&deletion, NULL);
     pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
