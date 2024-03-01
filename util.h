@@ -5,6 +5,7 @@
 #define set_mac(mac, m5, m4, m3, m2, m1, m0) {mac.data[0]=m5;mac.data[1]=m4;mac.data[2]=m3;mac.data[3]=m2;mac.data[4]=m1;mac.data[5]=m0;}
 #define ip_to_int(a3, a2, a1, a0) (((a3) << 24) + ((a2) << 16) + ((a1) << 8) + (a0))
 #define connkey(ip, loc, rem) (((uint64_t)(ip) << 32) + ((uint64_t)(loc) << 16) + (uint64_t)(rem))
+#define is_virt_ip(ip) ((ip) >= SUBNET_BASE && (ip) < SUBNET_BASE + SUBNET_SIZE)
 
 int set_recv_timeout(int socket, unsigned long secs);
 

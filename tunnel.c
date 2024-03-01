@@ -35,7 +35,7 @@ SceNetAdhocctlGroupName current_group = {0};
 void print_header(struct Header *header, bool dest_is_local) {
     printf("(");
     print_ip(header->src_ip);
-    if (!dest_is_local && header->src_ip != 0) {
+    if (!dest_is_local && is_virt_ip(header->src_ip)) {
         printf("[");
         print_ip(local_ips[header->src_ip - SUBNET_BASE]);
         printf("]");
