@@ -180,7 +180,7 @@ void delete_group(struct ThreadGroupInfo *group_info) {
     group_info->dest_ip = 0;
     struct Tunnel *tunnel = group_info->tunnel;
     if (--tunnel->refcount == 0) {
-        delete_tunnel(tunnel);
+        tunnel->stop = true;
     }
     log({
         printf("Successfully deleted thread-group ");
@@ -537,6 +537,7 @@ void *mux_thread_server(void *arg) {
         int fd = accept(server, (struct sockaddr *)&sockaddr, &socklen);
         if (fd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
         if (fd == -1) break;
+        change_blocking_mode(fd, 1);
         uint16_t src_port = ntohs(sockaddr.sin_port);
         uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
         puts("gugu");
