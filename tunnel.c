@@ -487,7 +487,19 @@ void *mux_thread(void *arg) {
             header->src_port = info->src_port;
         } else if (info->protocol == PROTOCOL_UDP) {
             n = recvfrom(src, data, RECV_BUFSIZE, 0, (struct sockaddr *)&sockaddr, &socklen);
-            header->src_ip = ntohl(sockaddr.sin_addr.s_addr);
+            uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
+            //TODO: make a reverse hash map for this
+            int i;
+            for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
+            if (i == SUBNET_SIZE) {
+                log({
+                    printf("UDP message from ");
+                    print_ip(local_ip);
+                    printf(" not in local network");
+                });
+                continue;
+            }
+            header->src_ip = i + SUBNET_BASE;
             header->src_port = 0; // indicates UDP
         }
         if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
