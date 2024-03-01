@@ -16,14 +16,46 @@
 #include "config.h"
 #include "tunnel.h"
 
+#define log(stmts) {pthread_mutex_lock(&log_lock); stmts; pthread_mutex_unlock(&log_lock);}
+
+const char *const UDP_STR = "UDP";
+const char *const TCP_STR = "TCP";
+
 struct ThreadGroupInfo thread_groups[SUBNET_SIZE] = {0};
 // for groups or tunnels
 pthread_rwlock_t deletion;
+pthread_mutex_t log_lock;
 uint32_t local_ips[SUBNET_SIZE] = {0};
 volatile bool running = true;
 struct Game *games = NULL;
 size_t current_game = -1;
 SceNetAdhocctlGroupName current_group = {0};
+
+void print_header(struct Header *header, bool dest_is_local) {
+    printf("(");
+    print_ip(header->src_ip);
+    if (!dest_is_local) {
+        printf("[");
+        print_ip(local_ips[header->src_ip - SUBNET_BASE]);
+        printf("]");
+    }
+    printf(":%d -> ", header->src_port);
+    print_ip(header->dest_ip);
+    if (dest_is_local) {
+        printf("[");
+        print_ip(local_ips[header->dest_ip - SUBNET_BASE]);
+        printf("]");
+    }
+    printf(":%d)", header->dest_port);
+}
+
+void print_thread(struct ThreadInfo *info) {
+    printf("%s(", info->protocol == PROTOCOL_TCP ? TCP_STR : UDP_STR);
+    print_ip(info->src_ip);
+    printf(":%d -> ", info->src_port);
+    print_ip(info->common->dest_ip);
+    printf(":%d)", info->dest_port);
+}
 
 void print_game(struct Game *game) {
     char *product_code = malloc(PRODUCT_CODE_LENGTH + 1);
@@ -31,11 +63,9 @@ void print_game(struct Game *game) {
     product_code[PRODUCT_CODE_LENGTH] = 0;
     printf("Game %s {\n", product_code);
     struct Port *ports = game->ports;
-    const char *const udp_str = "UDP";
-    const char *const tcp_str = "TCP";
     for (int i = 0; i < arrlen(ports); ++i) {
         struct Port *port = &ports[i];
-        const char *prot_str = port->protocol == PROTOCOL_TCP ? tcp_str : udp_str;
+        const char *prot_str = port->protocol == PROTOCOL_TCP ? TCP_STR : UDP_STR;
         printf("  %s %d\n", prot_str, port->port);
     }
     printf("}\n");
@@ -53,7 +83,7 @@ void interrupt(int sig) {
 }
 
 void unreachable() {
-    fprintf(stderr, "reached unreachable state");
+    printf("FATAL: reached unreachable state");
     exit(EXIT_FAILURE);
 }
 
@@ -71,6 +101,11 @@ void clear_rxbuf(struct ReceiveBuffer *rx, int clear) {
 // invariant: threads that have group rwlock also already have deletion read lock
 // therefore it is unnecessary to write lock group
 void delete_thread(struct ThreadInfo *info) {
+    log({
+        printf("Deleting thread ");
+        print_thread(info);
+        puts("");
+    });
     info->stop = true;
     close(info->stream);
     void *tmp;
@@ -91,10 +126,20 @@ void delete_thread(struct ThreadInfo *info) {
             hmdel(conn_map, key);
         }
     }
+    log({
+        printf("Successfully deleted thread ");
+        print_thread(info);
+        puts("");
+    });
     free(info);
 }
 
 void delete_tunnel(struct Tunnel *tunnel) {
+    log({
+        printf("Deleting tunnel ");
+        print_ip(tunnel->ip);
+        puts("");
+    });
     for (int i = 0; i < SUBNET_SIZE; ++i) {
         struct ThreadGroupInfo *thread_group = &thread_groups[i];
         if (thread_group->dest_ip == 0) continue;
@@ -106,10 +151,20 @@ void delete_tunnel(struct Tunnel *tunnel) {
     close(tunnel->stream);
     void *tmp;
     pthread_join(tunnel->thread, &tmp);
+    log({
+        printf("Successfully deleted tunnel ");
+        print_ip(tunnel->ip);
+        puts("");
+    });
     free(tunnel);
 }
 
 void delete_group(struct ThreadGroupInfo *group_info) {
+    log({
+        printf("Deleting thread-group ");
+        print_ip(group_info->dest_ip);
+        puts("");
+    });
     for (struct ThreadInfo *current = group_info->info; current != NULL; current = current->next) {
         delete_thread(current);
     }
@@ -120,14 +175,22 @@ void delete_group(struct ThreadGroupInfo *group_info) {
     if (--tunnel->refcount == 0) {
         delete_tunnel(tunnel);
     }
+    log({
+        printf("Successfully deleted thread-group ");
+        print_ip(group_info->dest_ip);
+        puts("");
+    });
 }
 
 bool handle_connect(int server, struct ReceiveBuffer *rx, SceNetAdhocctlConnectPacketS2T packet) {
     bool passive_mode = true;
-    print_ip(packet.virt_ip);
-    puts("");
-    print_ip(packet.ip);
-    puts("");
+    log({
+        printf("Local device ");
+        print_ip(packet.ip);
+        printf(" was assigned virtual ip ");
+        print_ip(packet.virt_ip);
+        puts("");
+    });
     local_ips[packet.virt_ip - SUBNET_BASE] = packet.ip;
     int i;
     for (i = 0; i < SUBNET_SIZE; ++i) {
@@ -172,26 +235,43 @@ void *dmux_thread(void *arg) {
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
         uint16_t len = header.len;
+        pthread_rwlock_rdlock(&deletion);
+        struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
+        if (thread_group->dest_ip == 0) {
+            log({
+                printf("WARN: unsolicited connection attempt from ");
+                print_ip(header.src_ip);
+                puts("");
+            });
+            pthread_rwlock_unlock(&deletion);
+            continue;
+        }
         if (len == 0) {
             uint8_t code;
             if (recv(src, &code, 1, 0) < 1) break;
-            pthread_rwlock_rdlock(&deletion);
-            struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
-            if (thread_group->dest_ip == 0) {
-                fprintf(stderr, "WARN: unsolicited connection attempt");
-                pthread_rwlock_unlock(&deletion);
-                continue;
-            }
             if (code == TCP_CONNECT) {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
+                log({
+                    printf("Creating TCP connection ");
+                    print_header(&header, true);
+                    puts("");
+                });
                 if (!local_ip) {
-                    fprintf(stderr, "WARN: connection attempt to device not in local network");
+                    log({
+                        printf("WARN: connection attempt to ");
+                        print_ip(header.dest_ip);
+                        printf(" which is not in local network\n");
+                    });
                     pthread_rwlock_unlock(&deletion);
                     continue;
                 }
                 int stream = create_connected_socket(htonl(local_ip), header.dest_port);
                 if (stream == -1) {
-                    fprintf(stderr, "WARN: couldn't create connection to local device");
+                    log({
+                        printf("WARN: couldn't create connection to ");
+                        print_ip(local_ip);
+                        puts("");
+                    });
                     pthread_rwlock_unlock(&deletion);
                     continue;
                 }
@@ -216,12 +296,27 @@ void *dmux_thread(void *arg) {
                 } else thread_group->info = info;
                 pthread_rwlock_unlock(&thread_group->rwlock);
                 pthread_create(&info->thread, NULL, mux_thread, info);
+                log({
+                    printf("TCP connection ");
+                    print_thread(info);
+                    printf(" successfully established\n");
+                });
             } else if (code == TCP_DISCONNECT) {
+                log({
+                    printf("Closing TCP connection ");
+                    print_header(&header, true);
+                    puts("");
+                });
                 for (struct ThreadInfo *current = thread_group->info; current != NULL; current = current->next) {
                     if (current->src_ip == header.dest_ip &&
                         current->src_port == header.dest_port &&
                         current->dest_port == header.src_port)
                     {
+                        log({
+                            printf("Closed TCP connection ");
+                            print_thread(current);
+                            puts("");
+                        });
                         current->stop = true;
                         break;
                     }
@@ -231,24 +326,35 @@ void *dmux_thread(void *arg) {
             continue;
         }
         if (recvall(src, buffer, header.len) < 1) break;
-        pthread_rwlock_rdlock(&deletion);
-        struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
         pthread_rwlock_rdlock(&thread_group->rwlock);
         int i = hmgeti(thread_group->conn_map, key);
         if (i != -1) {
             struct Connection *conn = thread_group->conn_map[i].value;
             pthread_mutex_lock(&conn->lock);
             if (header.src_port) {
+                log({
+                    printf("Forwarding %d bytes over TCP via ", header.len);
+                    print_header(&header, true);
+                });
                 sendall(conn->stream, buffer, header.len, 0, 0);
             } else {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
+                log({
+                    printf("Forwarding %d bytes over UDP via ", header.len);
+                    print_header(&header, true);
+                });
                 if (local_ip != 0)
                     sendall(conn->stream, buffer, header.len, local_ip, header.dest_port);
-                else
-                    fprintf(stderr, "WARN: couldn't send to non-existing local device");
+                else {
+                    log({
+                        printf("WARN: couldn't send to non-existing local device ");
+                        print_ip(local_ip);
+                    });
+                    puts("");
+                }
             }
             pthread_mutex_unlock(&conn->lock);
-        } else fprintf(stderr, "WARN: connection does not exist.\n");
+        } else printf("WARN: connection does not exist.\n");
         pthread_rwlock_unlock(&thread_group->rwlock);
         pthread_rwlock_unlock(&deletion);
     }
@@ -272,14 +378,32 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
     socklen_t socklen = sizeof(sockaddr);
     switch (mode) {
         case MODE_CONNECT:
+            log({
+                printf("Connecting to tunnel ");
+                print_ip(ip);
+                puts("");
+            });
             stream = create_connected_socket(htonl(ip), TUNNEL_PORT);
             break;
         case MODE_LISTEN:
+            log({
+                printf("Accepting connection from tunnel ");
+                print_ip(ip);
+                puts("");
+            });
+            //TODO: set a timeout for listening
             stream = accept(sock, (struct sockaddr *)&sockaddr, &socklen);
             break;
         default: unreachable();
     }
-    //TODO: error
+    if (stream == -1) {
+        log({
+            printf("ERROR: Couldn't create connection to tunnel ");
+            print_ip(ip);
+            perror(NULL);
+        });
+        return NULL;
+    }
     struct Tunnel *tunnel = malloc(sizeof(struct Tunnel));
     *tunnel = (struct Tunnel){
         .ip = ip,
@@ -288,6 +412,11 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
     };
     pthread_mutex_init(&tunnel->lock, NULL);
     pthread_create(&tunnel->thread, NULL, dmux_thread, tunnel);
+    log({
+        printf("Tunnel ");
+        print_ip(ip);
+        printf(" created successfully\n");
+    });
     return tunnel;
 }
 
@@ -349,6 +478,10 @@ void *mux_thread(void *arg) {
         }
         if (n < 1) {
             if (info->protocol == PROTOCOL_TCP) {
+                log({
+                    print_thread(info);
+                    printf(" is forwarding a TCP disconnect message\n");
+                });
                 *data = TCP_DISCONNECT;
                 header->len = 0;
                 sendall(dest, buffer, 1 + HEADER_SIZE, 0, 0);
@@ -357,6 +490,11 @@ void *mux_thread(void *arg) {
         }
         header->len = n;
         pthread_mutex_lock(lock);
+        log({
+            printf("Forwarding %d bytes via ", n);
+            print_header(header, false);
+            puts("");
+        });
         sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
         pthread_mutex_unlock(lock);
     }
@@ -387,14 +525,22 @@ void *mux_thread_server(void *arg) {
         int i;
         for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
         if (i == SUBNET_SIZE) {
+            log({
+                printf("WARN: Couldn't find virtual ip for ");
+                print_ip(local_ip);
+                puts("");
+            });
             close(fd);
-            printf("WARN: Couldn't find virtual ip for ");
-            print_ip(local_ip);
-            puts("");
             continue;
         }
         uint32_t src_ip = SUBNET_BASE + i;
         header->src_port = src_port;
+        log({
+            print_thread(info);
+            printf(" is forwarding TCP connect message ");
+            print_header(header, false);
+            puts("");
+        });
         sendall(dest, ctrl_buf, HEADER_SIZE + 1, 0, 0);
         struct Connection *conn = malloc(sizeof(struct Connection));
         conn->stream = fd;
@@ -416,6 +562,11 @@ void *mux_thread_server(void *arg) {
         current->next = conn_info;
         pthread_rwlock_unlock(&thread_group->rwlock);
         pthread_create(&conn_info->thread, NULL, mux_thread, conn_info);
+        log({
+            printf("Successfully established TCP connection ");
+            print_thread(conn_info);
+            puts("");
+        });
     }
     info->stop = true;
     return NULL;
@@ -439,7 +590,11 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
             info->src_port = 0;
             int stream = create_udp_socket(htonl(thread_group->dest_ip), info->dest_port);
             if (stream == -1) {
-                fprintf(stderr, "WARN: udp socket is fucked");
+                log({
+                    printf("WARN: udp socket for ");
+                    print_ip(thread_group->dest_ip);
+                    puts("is fucked");
+                });
                 free(info);
                 continue;
             }
@@ -450,7 +605,7 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
             hmput(thread_group->conn_map, connkey(0, 0, info->dest_port), conn);
             pthread_create(&info->thread, NULL, mux_thread, info);
         } else {
-            fprintf(stderr, "WARN: unsupported protocol %d\n", info->protocol);
+            printf("WARN: unsupported protocol %d\n", info->protocol);
         };
         prev = info;
     }
@@ -477,17 +632,18 @@ void garbage_collect() {
 
 int main() {
     pthread_rwlock_init(&deletion, NULL);
+    pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
     signal(SIGTERM, interrupt);
     int server = create_connected_socket(inet_addr("192.168.178.124"), SERVER_PORT);
     if (server == -1) {
-        fprintf(stderr, "Couldn't connect to adhoc server.\n");
+        printf("Couldn't connect to adhoc server.\n");
         exit(EXIT_FAILURE);
     }
     change_blocking_mode(server, 1);
     int peer_listener = create_listen_socket(INADDR_ANY, TUNNEL_PORT);
     if (peer_listener == -1) {
-        fprintf(stderr, "Couldn't create peer listening socket.\n");
+        printf("Couldn't create peer listening socket.\n");
         exit(EXIT_FAILURE);
     }
     uint8_t opcode = OPCODE_TUNNEL_LOGIN;
@@ -543,6 +699,7 @@ int main() {
                 SceNetAdhocctlPeerPacketS2T packet = *(SceNetAdhocctlPeerPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.pub_ip, MODE_CONNECT);
+                if (tunnel == NULL) continue;
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
                 *thread_group = (struct ThreadGroupInfo){
                     .group = current_group,
@@ -561,6 +718,7 @@ int main() {
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.ip, MODE_LISTEN);
+                if (tunnel == NULL) continue;
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
                 size_t game = 0;
                 for (int i = 0; i < arrlen(games); ++i) {
@@ -586,7 +744,7 @@ int main() {
                 delete_group(thread_group);
                 pthread_rwlock_unlock(&deletion);
             } else {
-                fprintf(stderr, "Invalid opcode!\n");
+                printf("Invalid opcode!\n");
                 break;
             }
         } 

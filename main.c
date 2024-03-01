@@ -161,7 +161,6 @@ int server_loop(int server)
                 // New Incoming Data
                 if(recvresult > 0)
                 {
-                    printf("received %d bytes\n", recvresult);
                     // Move RX Pointer
                     user->rxpos += recvresult;
                     

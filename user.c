@@ -15,8 +15,6 @@
  * along with PRO ONLINE. If not, see <http://www.gnu.org/licenses/ .
  */
 
-// TODO: handle tunnel disconnect (disconnect all users using that tunnel)
-
 //#if !defined(__APPLE__)
 //#include <malloc.h>
 //#endif
@@ -53,8 +51,7 @@ struct MacMapEntry *mac_map = NULL;
 void add_local_addr(SceNetAdhocctlLocalPacketT2S packet)
 {
     uint64_t mac = mac_to_int(packet.mac);
-    uint32_t local_ip = htonl(packet.local_ip);
-    hmput(mac_map, mac, local_ip);
+    hmput(mac_map, mac, packet.local_ip);
 }
 
 /**
@@ -226,6 +223,18 @@ void login_user_data(SceNetAdhocctlUserNode * user, SceNetAdhocctlLoginPacketC2S
  */
 void logout_user(SceNetAdhocctlUserNode * user)
 {
+    if (is_tunnel(user)) {
+        SceNetAdhocctlUserNode * * to_delete = NULL;
+        for (SceNetAdhocctlUserNode * current = _db_user; current != NULL; current = current->next) {
+            if (current->tunnel == user)
+                arrput(to_delete, current);
+        }
+        for (int i = 0; i < arrlen(to_delete); ++i) {
+            logout_user(to_delete[i]);
+        }
+        arrfree(to_delete);
+    }
+
     // Disconnect from Group
     if(user->group != NULL) disconnect_user(user);
 
@@ -387,7 +396,7 @@ void connect_tunnel(SceNetAdhocctlUserNode * tunnel, SceNetAdhocctlUserNode * pe
                     while (peers != NULL) {
                         if (peers->resolver.ip != tunnel->resolver.ip) {
                             peer.virt_ip = peers->virt_ip;
-                            peer.pub_ip = peers->resolver.ip;
+                            peer.pub_ip = ntohl(peers->resolver.ip);
                             send(tunnel->stream, &peer, sizeof(peer), 0);
                         }
                         peers = peers->group_next;
@@ -506,13 +515,13 @@ void connect_user(SceNetAdhocctlUserNode * user, SceNetAdhocctlGroupName * group
                     {
                         uint32_t virt_ip = SUBNET_BASE + i;
                         virt_ips[i] = user->resolver.mac;
-                        user->virt_ip = htonl(virt_ip);
+                        user->virt_ip = virt_ip;
                         SceNetAdhocctlConnectPacketS2T packet;
                         packet.base.opcode = OPCODE_LISTEN;
                         packet.game = user->game->game;
                         packet.group = g->group;
                         packet.virt_ip = virt_ip;
-                        packet.ip = user->resolver.ip;
+                        packet.ip = ntohl(user->resolver.ip);
                         SceNetAdhocctlUserNode * peers = g->player;
                         while (peers != NULL)
                         {
@@ -536,13 +545,13 @@ void connect_user(SceNetAdhocctlUserNode * user, SceNetAdhocctlGroupName * group
                     {
                         if (user->resolver.ip == peer->resolver.ip)
                         {
-                            ips[0] = user->local_ip;
-                            ips[1] = peer->local_ip;
+                            ips[0] = htonl(user->local_ip);
+                            ips[1] = htonl(peer->local_ip);
                         }
                         else
                         {
-                            ips[0] = user->virt_ip;
-                            ips[1] = peer->virt_ip;
+                            ips[0] = htonl(user->virt_ip);
+                            ips[1] = htonl(peer->virt_ip);
                         }
                     }
                     else
@@ -698,7 +707,7 @@ void disconnect_user(SceNetAdhocctlUserNode * user)
         if (user->group->virt_enabled)
         {
             uint32_t virt_ip = user->virt_ip;
-            virt_ips[ntohl(virt_ip) - SUBNET_BASE] = (SceNetEtherAddr){0};
+            virt_ips[virt_ip - SUBNET_BASE] = (SceNetEtherAddr){0};
             tunnel_disc.base.opcode = OPCODE_DISCONNECT;
             tunnel_disc.ip = virt_ip;
         }
@@ -707,10 +716,22 @@ void disconnect_user(SceNetAdhocctlUserNode * user)
         SceNetAdhocctlUserNode * peer = user->group->player;
         while(peer != NULL)
         {
+            uint32_t ip;
             if (user->group->virt_enabled)
             {
-                if (user->resolver.ip != peer->resolver.ip)
+                if (user->resolver.ip == peer->resolver.ip)
+                {
+                    ip = htonl(user->local_ip);
+                }
+                else
+                {
                     send(peer->tunnel->stream, &tunnel_disc, sizeof(tunnel_disc), 0);
+                    ip = htonl(user->virt_ip);
+                }
+            }
+            else
+            {
+                ip = user->resolver.ip;
             }
 
             // Disconnect Packet
@@ -723,7 +744,7 @@ void disconnect_user(SceNetAdhocctlUserNode * user)
             packet.base.opcode = OPCODE_DISCONNECT;
             
             // Set User IP
-            packet.ip = user->resolver.ip;
+            packet.ip = ip;
             
             // Send Data
             send(peer->stream, &packet, sizeof(packet), 0);

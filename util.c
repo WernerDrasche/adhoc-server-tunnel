@@ -30,11 +30,11 @@ int create_udp_socket(in_addr_t ip, uint16_t port)
         if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != -1) return fd;
         else
         {
-            perror("Couldn't bind udp socket");
+            perror("ERROR: Couldn't bind udp socket");
             close(fd);
         }
     }
-    else perror("Couldn't create udp socket");
+    else perror("ERROR: Couldn't create udp socket");
     return -1;
 }
 
@@ -51,10 +51,10 @@ int create_connected_socket(in_addr_t ip, uint16_t port)
         server.sin_port = htons(port);
         int result = connect(fd, (struct sockaddr *)&server, sizeof(server));
         if (result != -1) return fd;
-        perror("Couldn't connect tcp socket");
+        perror("ERROR: Couldn't connect tcp socket");
         close(fd);
     }
-    else perror("Couldn't create tcp socket");
+    else perror("ERROR: Couldn't create tcp socket");
     return -1;
 }
 
