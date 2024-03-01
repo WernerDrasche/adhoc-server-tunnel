@@ -42,7 +42,7 @@ void print_header(struct Header *header, bool dest_is_local) {
     }
     printf(":%d -> ", header->src_port);
     print_ip(header->dest_ip);
-    if (dest_is_local) {
+    if (dest_is_local && is_virt_ip(header->dest_ip)) {
         printf("[");
         print_ip(local_ips[header->dest_ip - SUBNET_BASE]);
         printf("]");
@@ -249,6 +249,7 @@ void *dmux_thread(void *arg) {
         log({
             printf("sending from ");
             print_ip(thread_group->dest_ip);
+            puts("");
         });
         if (thread_group->dest_ip == 0) {
             log({
@@ -349,12 +350,15 @@ void *dmux_thread(void *arg) {
         int i = hmgeti(thread_group->conn_map, key);
         printf("i = %i\n", i);
         if (i != -1) {
+            puts("HIIHHI");
             struct Connection *conn = thread_group->conn_map[i].value;
             pthread_mutex_lock(&conn->lock);
+            puts("HAHAHAH");
             if (header.src_port) {
                 log({
                     printf("Forwarding %d bytes over TCP via ", header.len);
                     print_header(&header, true);
+                    puts("");
                 });
                 sendall(conn->stream, buffer, header.len, 0, 0);
             } else {
@@ -362,15 +366,16 @@ void *dmux_thread(void *arg) {
                 log({
                     printf("Forwarding %d bytes over UDP via ", header.len);
                     print_header(&header, true);
+                    puts("");
                 });
                 if (local_ip != 0)
-                    sendall(conn->stream, buffer, header.len, local_ip, header.dest_port);
+                    sendall(conn->stream, buffer, header.len, htonl(local_ip), header.dest_port);
                 else {
                     log({
                         printf("WARN: couldn't send to non-existing local device ");
                         print_ip(local_ip);
+                        puts("");
                     });
-                    puts("");
                 }
             }
             pthread_mutex_unlock(&conn->lock);
@@ -719,7 +724,7 @@ int main() {
     bool passive_mode = true;
     while (running) {
         int result = recv(server, rx.buf + rx.pos, RECV_BUFSIZE - rx.pos, 0);
-        //TODO: check errno
+        if (result == 0 || (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) break;
         if (result > 0 || rx.pos > 0) {
             if (result > 0) {
                 printf("received %d bytes\n", result);
