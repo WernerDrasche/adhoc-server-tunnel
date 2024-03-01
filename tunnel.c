@@ -175,15 +175,16 @@ void delete_group(struct ThreadGroupInfo *group_info) {
     }
     arrfree(to_delete);
     hmfree(group_info->conn_map);
+    uint32_t dest_ip = group_info->dest_ip;
     // invalidate the group
-    thread_groups[group_info->dest_ip - SUBNET_BASE].dest_ip = 0;
+    group_info->dest_ip = 0;
     struct Tunnel *tunnel = group_info->tunnel;
     if (--tunnel->refcount == 0) {
         delete_tunnel(tunnel);
     }
     log({
         printf("Successfully deleted thread-group ");
-        print_ip(group_info->dest_ip);
+        print_ip(dest_ip);
         puts("");
     });
 }
@@ -553,13 +554,16 @@ void *mux_thread_server(void *arg) {
         puts("GAGA");
         uint32_t src_ip = SUBNET_BASE + i;
         header->src_port = src_port;
+        puts("BLIBLI");
         log({
             print_thread(info);
+            puts("BLUBLU");
             printf(" is forwarding TCP connect message ");
             print_header(header, false);
             puts("");
         });
         sendall(dest, ctrl_buf, HEADER_SIZE + 1, 0, 0);
+        puts("KJLFJDKLJ");
         struct Connection *conn = malloc(sizeof(struct Connection));
         puts("FIFI");
         conn->stream = fd;
