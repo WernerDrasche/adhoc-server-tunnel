@@ -6,6 +6,8 @@
 #define ip_to_int(a3, a2, a1, a0) (((a3) << 24) + ((a2) << 16) + ((a1) << 8) + (a0))
 #define connkey(ip, loc, rem) (((uint64_t)(ip) << 32) + ((uint64_t)(loc) << 16) + (uint64_t)(rem))
 
+int set_recv_timeout(int socket, unsigned long secs);
+
 void print_ip(uint32_t ip);
 
 int create_udp_socket(in_addr_t ip, uint16_t port);

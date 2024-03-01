@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <string.h>
+#include <errno.h>
 #include "stb_ds.h"
 #include "packets.h"
 #include "util.h"
@@ -107,9 +108,9 @@ void delete_thread(struct ThreadInfo *info) {
         puts("");
     });
     info->stop = true;
-    close(info->stream);
     void *tmp;
     pthread_join(info->thread, &tmp);
+    close(info->stream);
     struct ThreadInfo *current = info->common->info;
     if (current != info) {
         while (current->next != info) current = current->next;
@@ -148,9 +149,9 @@ void delete_tunnel(struct Tunnel *tunnel) {
         }
     }
     tunnel->stop = true;
-    close(tunnel->stream);
     void *tmp;
     pthread_join(tunnel->thread, &tmp);
+    close(tunnel->stream);
     log({
         printf("Successfully deleted tunnel ");
         print_ip(tunnel->ip);
@@ -231,7 +232,7 @@ void *dmux_thread(void *arg) {
     int src = tunnel->stream;
     uint8_t *buffer = malloc(RECV_BUFSIZE);
     while (running && !tunnel->stop) {
-        if (recvall(src, buffer, HEADER_SIZE) < 1) break;
+        if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
         uint16_t len = header.len;
@@ -248,7 +249,10 @@ void *dmux_thread(void *arg) {
         }
         if (len == 0) {
             uint8_t code;
-            if (recv(src, &code, 1, 0) < 1) break;
+            if (recvall(src, &code, 1, &tunnel->stop) == -1) {
+                pthread_rwlock_unlock(&deletion);
+                break;
+            }
             if (code == TCP_CONNECT) {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
                 log({
@@ -325,7 +329,7 @@ void *dmux_thread(void *arg) {
             pthread_rwlock_unlock(&deletion);
             continue;
         }
-        if (recvall(src, buffer, header.len) < 1) break;
+        if (recvall(src, buffer, header.len, &tunnel->stop) == -1) break;
         pthread_rwlock_rdlock(&thread_group->rwlock);
         int i = hmgeti(thread_group->conn_map, key);
         if (i != -1) {
@@ -384,6 +388,7 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
                 puts("");
             });
             stream = create_connected_socket(htonl(ip), TUNNEL_PORT);
+            change_blocking_mode(stream, 1);
             break;
         case MODE_LISTEN:
             log({
@@ -393,6 +398,7 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
             });
             //TODO: set a timeout for listening
             stream = accept(sock, (struct sockaddr *)&sockaddr, &socklen);
+            change_blocking_mode(stream, 1);
             break;
         default: unreachable();
     }
@@ -420,11 +426,13 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
     return tunnel;
 }
 
-int recvall(int stream, void *data, size_t len) {
+int recvall(int stream, void *data, size_t len, bool *stop) {
     size_t received = 0;
     while (received < len) {
+        if (*stop) return -1;
         int n = recv(stream, data + received, len - received, 0);
-        if (n < 1) return n;
+        if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+        if (n == -1 || n == 0) return -1;
         received += n;
     }
     return received;
@@ -476,7 +484,8 @@ void *mux_thread(void *arg) {
             header->src_ip = ntohl(sockaddr.sin_addr.s_addr);
             header->src_port = 0; // indicates UDP
         }
-        if (n < 1) {
+        if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+        if (n == -1 || n == 0) {
             if (info->protocol == PROTOCOL_TCP) {
                 log({
                     print_thread(info);
@@ -509,6 +518,7 @@ void *mux_thread_server(void *arg) {
     uint16_t dest_port = info->dest_port;
     int dest = info->common->tunnel->stream;
     int server = create_listen_socket(htonl(dest_ip), dest_port);
+    change_blocking_mode(server, 1);
     uint8_t ctrl_buf[HEADER_SIZE + 1];
     struct Header *header = (struct Header *)ctrl_buf;
     header->len = 0;
@@ -519,6 +529,7 @@ void *mux_thread_server(void *arg) {
     socklen_t socklen = sizeof(sockaddr);
     while (running && !info->stop) {
         int fd = accept(server, (struct sockaddr *)&sockaddr, &socklen);
+        if (fd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
         if (fd == -1) break;
         uint16_t src_port = ntohs(sockaddr.sin_port);
         uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
@@ -589,6 +600,7 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
         else if (info->protocol == PROTOCOL_UDP) {
             info->src_port = 0;
             int stream = create_udp_socket(htonl(thread_group->dest_ip), info->dest_port);
+            change_blocking_mode(stream, 1);
             if (stream == -1) {
                 log({
                     printf("WARN: udp socket for ");
@@ -669,6 +681,7 @@ int main() {
     bool passive_mode = true;
     while (running) {
         int result = recv(server, rx.buf + rx.pos, RECV_BUFSIZE - rx.pos, 0);
+        //TODO: check errno
         if (result > 0 || rx.pos > 0) {
             if (result > 0) {
                 printf("received %d bytes\n", result);
@@ -741,7 +754,8 @@ int main() {
                 clear_rxbuf(&rx, sizeof(packet));
                 pthread_rwlock_wrlock(&deletion);
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.ip - SUBNET_BASE];
-                delete_group(thread_group);
+                if (thread_group->dest_ip != 0)
+                    delete_group(thread_group);
                 pthread_rwlock_unlock(&deletion);
             } else {
                 printf("Invalid opcode!\n");

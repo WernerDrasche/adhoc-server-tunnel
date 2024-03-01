@@ -90,7 +90,7 @@ void clear_rxbuf(struct ReceiveBuffer *rx, int clear);
 bool handle_connect(int server, struct ReceiveBuffer *rx, SceNetAdhocctlConnectPacketS2T packet);
 void *dmux_thread(void *arg);
 struct Tunnel *get_or_create_tunnel(int socket, uint32_t ip, enum TunnelCreationMode mode);
-int recvall(int stream, void *data, size_t len);
+int recvall(int stream, void *data, size_t len, bool *stop);
 int sendall(int stream, const void *data, size_t len, in_addr_t ip, uint16_t port);
 void *mux_thread(void *arg);
 void *mux_thread_server(void *arg);

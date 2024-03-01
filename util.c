@@ -7,6 +7,13 @@
 #include "util.h"
 #include "config.h"
 
+int set_recv_timeout(int socket, unsigned long usecs) {
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = usecs;
+    return setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+}
+
 void print_ip(uint32_t ip) {
     uint8_t arr[4];
     for (int i = 0; i < 4; ++i) {
