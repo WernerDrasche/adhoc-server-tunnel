@@ -499,14 +499,14 @@ void *mux_thread(void *arg) {
             uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
             //TODO: debugging
             log({
-                printf("UDP fuckery ");
+                printf("UDP fuckery %d bytes from ", n);
                 print_ip(local_ip);
                 puts("");
             });
             //TODO: make a reverse hash map for this
             int i;
             for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
-            //they send from 255.255.0.0 apparently
+            //they send from 255.255.0.0 (first) and 0.0.0.0 (second) apparently
             header->src_ip = i != SUBNET_SIZE ? i + SUBNET_BASE : 0;
             header->src_port = 0; // indicates UDP
         }
