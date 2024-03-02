@@ -525,7 +525,7 @@ void *mux_thread(void *arg) {
                 log({
                     printf("UDP message from ");
                     print_ip(local_ip);
-                    printf(" not in virtual network\n");
+                    printf(":%d not in virtual network\n", ntohs(sockaddr.sin_port));
                 });
                 continue;
             }
@@ -556,8 +556,9 @@ void *mux_thread_server(void *arg) {
     uint16_t dest_port = info->dest_port;
     int dest = info->common->tunnel->stream;
     int server = create_listen_socket(htonl(dest_ip), dest_port);
-    //change_blocking_mode(server, 1);
-    set_recv_timeout(server, 50000);
+    change_blocking_mode(server, 1);
+    //for openbsd the accepts don't time out apparently (linux they do)
+    //set_recv_timeout(server, 50000);
     uint8_t ctrl_buf[HEADER_SIZE + 1];
     struct Header *header = (struct Header *)ctrl_buf;
     header->len = 0;
