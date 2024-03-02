@@ -31,7 +31,6 @@ volatile bool running = true;
 struct Game *games = NULL;
 size_t current_game = -1;
 SceNetAdhocctlGroupName current_group = {0};
-uint32_t local_tunnel_ip = 0;
 
 void print_header(struct Header *header, bool dest_is_local) {
     printf("(");
@@ -90,14 +89,14 @@ void unreachable() {
 }
 
 void clear_rxbuf(struct ReceiveBuffer *rx, int clear) {
-    printf("clearing %d bytes and rxpos = %lu\n", clear, rx->pos);
+    //printf("clearing %d bytes and rxpos = %lu\n", clear, rx->pos);
     if(clear == -1 || clear > rx->pos) {
-        puts("FUCK");
+        //puts("FUCK");
         clear = rx->pos;
     }
     memmove(rx->buf, rx->buf + clear, rx->pos - clear);
     rx->pos -= clear;
-    printf("new rxpos = %lu\n", rx->pos);
+    //printf("new rxpos = %lu\n", rx->pos);
 }
 
 // invariant: threads that have group rwlock also already have deletion read lock
@@ -242,16 +241,16 @@ void *dmux_thread(void *arg) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
-        printf("key = %llu\n", key);
+        //printf("key = %llu\n", key);
         uint16_t len = header.len;
-        printf("len = %u\n", header.len);
+        //printf("len = %u\n", header.len);
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
-        log({
-            printf("sending from ");
-            print_ip(thread_group->dest_ip);
-            puts("");
-        });
+        //log({
+        //    printf("sending from ");
+        //    print_ip(thread_group->dest_ip);
+        //    puts("");
+        //});
         if (thread_group->dest_ip == 0) {
             log({
                 printf("WARN: unsolicited connection attempt from ");
@@ -351,26 +350,26 @@ void *dmux_thread(void *arg) {
         }
         pthread_rwlock_rdlock(&thread_group->rwlock);
         int i = hmgeti(thread_group->conn_map, key);
-        printf("i = %i\n", i);
+        //printf("i = %i\n", i);
         if (i != -1) {
-            puts("HIIHHI");
+            //puts("HIIHHI");
             struct Connection *conn = thread_group->conn_map[i].value;
             pthread_mutex_lock(&conn->lock);
-            puts("HAHAHAH");
+            //puts("HAHAHAH");
             if (header.src_port) {
                 log({
-                    printf("Forwarding %d bytes over TCP via ", header.len);
+                    printf("DMUX: Forwarding %d bytes over TCP via ", header.len);
                     print_header(&header, true);
                     puts("");
                 });
                 sendall(conn->stream, buffer, header.len, 0, 0);
             } else {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
-                log({
-                    printf("Forwarding %d bytes over UDP via ", header.len);
-                    print_header(&header, true);
-                    puts("");
-                });
+                //log({
+                //    printf("DMUX: Forwarding %d bytes over UDP via ", header.len);
+                //    print_header(&header, true);
+                //    puts("");
+                //});
                 if (local_ip != 0)
                     sendall(conn->stream, buffer, header.len, htonl(local_ip), header.dest_port);
                 else {
@@ -412,7 +411,7 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
                 puts("");
             });
             stream = create_connected_socket(htonl(ip), TUNNEL_PORT);
-            change_blocking_mode(stream, 1);
+            set_recv_timeout(stream, 50000);
             break;
         case MODE_LISTEN:
             log({
@@ -420,9 +419,9 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
                 print_ip(ip);
                 puts("");
             });
-            //TODO: set a timeout for listening
             stream = accept(sock, (struct sockaddr *)&sockaddr, &socklen);
-            change_blocking_mode(stream, 1);
+            //change_blocking_mode(stream, 1);
+            set_recv_timeout(stream, 50000);
             break;
         default: unreachable();
     }
@@ -519,9 +518,6 @@ void *mux_thread(void *arg) {
             if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
             if (n == -1 || n == 0) break;
             uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
-            //local can be virt if emulator on same machine as tunnel
-            if (is_virt_ip(local_ip))
-                local_ip = local_tunnel_ip;
             //TODO: make a reverse hash map for this
             int i;
             for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
@@ -539,11 +535,14 @@ void *mux_thread(void *arg) {
         header->len = n;
         pthread_mutex_lock(lock);
         sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
-        log({
-            printf("Forwarding %d bytes via ", n);
-            print_header(header, false);
-            puts("");
-        });
+        //TODO: debugging only tcp messages
+        if (!header->src_port) {
+            log({
+                printf("MUX: Forwarding %d bytes via ", n);
+                print_header(header, false);
+                puts("");
+            });
+        }
         pthread_mutex_unlock(lock);
     }
     free(buffer);
@@ -557,7 +556,8 @@ void *mux_thread_server(void *arg) {
     uint16_t dest_port = info->dest_port;
     int dest = info->common->tunnel->stream;
     int server = create_listen_socket(htonl(dest_ip), dest_port);
-    change_blocking_mode(server, 1);
+    //change_blocking_mode(server, 1);
+    set_recv_timeout(server, 50000);
     uint8_t ctrl_buf[HEADER_SIZE + 1];
     struct Header *header = (struct Header *)ctrl_buf;
     header->len = 0;
@@ -570,10 +570,11 @@ void *mux_thread_server(void *arg) {
         int fd = accept(server, (struct sockaddr *)&sockaddr, &socklen);
         if (fd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
         if (fd == -1) break;
-        change_blocking_mode(fd, 1);
+        //change_blocking_mode(fd, 1);
+        set_recv_timeout(fd, 50000);
         uint16_t src_port = ntohs(sockaddr.sin_port);
         uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
-        puts("gugu");
+        //puts("gugu");
         int i;
         for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
         if (i == SUBNET_SIZE) {
@@ -585,27 +586,27 @@ void *mux_thread_server(void *arg) {
             close(fd);
             continue;
         }
-        puts("GAGA");
+        //puts("GAGA");
         uint32_t src_ip = SUBNET_BASE + i;
         header->src_ip = src_ip;
         header->src_port = src_port;
-        puts("BLIBLI");
+        //puts("BLIBLI");
         log({
             print_thread(info);
-            puts("BLUBLU");
+            //puts("BLUBLU");
             printf(" is forwarding TCP connect message ");
             print_header(header, false);
             puts("");
         });
         sendall(dest, ctrl_buf, HEADER_SIZE + 1, 0, 0);
-        puts("KJLFJDKLJ");
+        //puts("KJLFJDKLJ");
         struct Connection *conn = malloc(sizeof(struct Connection));
-        puts("FIFI");
+        //puts("FIFI");
         conn->stream = fd;
         pthread_mutex_init(&conn->lock, NULL);
         struct ThreadGroupInfo *thread_group = info->common;
         struct ThreadInfo *conn_info = malloc(sizeof(struct ThreadInfo));
-        puts("FUFU");
+        //puts("FUFU");
         *conn_info = (struct ThreadInfo){
             .common = info->common,
             .src_ip = src_ip,
@@ -616,7 +617,7 @@ void *mux_thread_server(void *arg) {
         };
         pthread_rwlock_wrlock(&thread_group->rwlock);
         hmput(thread_group->conn_map, connkey(src_ip, src_port, dest_port), conn);
-        puts("baba");
+        //puts("baba");
         struct ThreadInfo *current = info->common->info;
         while (current->next != NULL) current = current->next;
         current->next = conn_info;
@@ -649,7 +650,8 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
         else if (info->protocol == PROTOCOL_UDP) {
             info->src_port = 0;
             int stream = create_udp_socket(htonl(thread_group->dest_ip), info->dest_port);
-            change_blocking_mode(stream, 1);
+            //change_blocking_mode(stream, 1);
+            set_recv_timeout(stream, 50000);
             if (stream == -1) {
                 log({
                     printf("WARN: udp socket for ");
@@ -692,9 +694,6 @@ void garbage_collect() {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc == 2) {
-        local_tunnel_ip = ntohl(inet_addr(argv[1]));
-    }
     pthread_rwlock_init(&deletion, NULL);
     pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
@@ -704,12 +703,14 @@ int main(int argc, char *argv[]) {
         printf("Couldn't connect to adhoc server.\n");
         exit(EXIT_FAILURE);
     }
-    change_blocking_mode(server, 1);
+    //change_blocking_mode(server, 1);
+    set_recv_timeout(server, 50000);
     int peer_listener = create_listen_socket(INADDR_ANY, TUNNEL_PORT);
     if (peer_listener == -1) {
         printf("Couldn't create peer listening socket.\n");
         exit(EXIT_FAILURE);
     }
+    set_recv_timeout(peer_listener, 5000000);
     uint8_t opcode = OPCODE_TUNNEL_LOGIN;
     send(server, &opcode, 1, 0);
 
@@ -723,10 +724,12 @@ int main(int argc, char *argv[]) {
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
 
     set_mac(mac_to_local.mac, 0xfc, 0x60, 0x1d, 0xbb, 0xf0, 0x7a);
-    mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
+    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
+    mac_to_local.local_ip = ip_to_int(192, 168, 1, 1);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
     set_mac(mac_to_local.mac, 0x78, 0xdc, 0x81, 0x94, 0x83, 0xbd);
-    mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
+    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
+    mac_to_local.local_ip = ip_to_int(192, 168, 1, 2);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
 
     struct ReceiveBuffer rx = {.buf = malloc(RECV_BUFSIZE), .pos = 0};
