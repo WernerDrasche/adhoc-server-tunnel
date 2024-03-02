@@ -685,10 +685,15 @@ void garbage_collect() {
             delete_tunnel(thread_group->tunnel);
             continue;
         }
+        struct ThreadInfo **to_delete = NULL;
         for (struct ThreadInfo *current = thread_group->info; current != NULL; current = current->next) {
             if (current->stop)
-                delete_thread(current);
+                arrput(to_delete, current);
         }
+        for (int i = 0; i < arrlen(to_delete); ++i) {
+            delete_thread(to_delete[i]);
+        }
+        arrfree(to_delete);
     }
     pthread_rwlock_unlock(&deletion);
 }
