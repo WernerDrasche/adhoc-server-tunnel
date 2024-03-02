@@ -358,7 +358,7 @@ void *dmux_thread(void *arg) {
             //puts("HAHAHAH");
             if (header.src_port) {
                 log({
-                    printf("DMUX: Forwarding %d bytes over TCP via ", header.len);
+                    printf("DMUX: Forwarding %d bytes over TCP from ", header.len);
                     print_header(&header, true);
                     puts("");
                 });
@@ -366,7 +366,7 @@ void *dmux_thread(void *arg) {
             } else {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
                 log({
-                    printf("DMUX: Forwarding %d bytes over UDP via ", header.len);
+                    printf("DMUX: Forwarding %d bytes over UDP from ", header.len);
                     print_header(&header, true);
                     puts("");
                 });
@@ -729,12 +729,12 @@ int main(int argc, char *argv[]) {
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
 
     set_mac(mac_to_local.mac, 0xfc, 0x60, 0x1d, 0xbb, 0xf0, 0x7a);
-    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
-    mac_to_local.local_ip = ip_to_int(192, 168, 1, 2);
+    mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
+    //mac_to_local.local_ip = ip_to_int(192, 168, 1, 1);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
     set_mac(mac_to_local.mac, 0x78, 0xdc, 0x81, 0x94, 0x83, 0xbd);
-    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
-    mac_to_local.local_ip = ip_to_int(192, 168, 1, 1);
+    mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
+    //mac_to_local.local_ip = ip_to_int(192, 168, 1, 2);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
 
     struct ReceiveBuffer rx = {.buf = malloc(RECV_BUFSIZE), .pos = 0};
@@ -827,7 +827,12 @@ int main(int argc, char *argv[]) {
             usleep(1000);
         }
     }
-    garbage_collect();
+    pthread_rwlock_wrlock(&deletion);
+    for (int i = 0; i < SUBNET_SIZE; ++i) {
+        if (thread_groups[i].dest_ip != 0)
+            delete_group(&thread_groups[i]);
+    }
+    pthread_rwlock_unlock(&deletion);
     for (int i = 0; i < arrlen(games); ++i) {
         arrfree(games[i].ports);
     }
