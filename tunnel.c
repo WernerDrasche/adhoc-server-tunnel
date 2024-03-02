@@ -365,11 +365,11 @@ void *dmux_thread(void *arg) {
                 sendall(conn->stream, buffer, header.len, 0, 0);
             } else {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
-                //log({
-                //    printf("DMUX: Forwarding %d bytes over UDP via ", header.len);
-                //    print_header(&header, true);
-                //    puts("");
-                //});
+                log({
+                    printf("DMUX: Forwarding %d bytes over UDP via ", header.len);
+                    print_header(&header, true);
+                    puts("");
+                });
                 if (local_ip != 0)
                     sendall(conn->stream, buffer, header.len, htonl(local_ip), header.dest_port);
                 else {
@@ -536,13 +536,13 @@ void *mux_thread(void *arg) {
         pthread_mutex_lock(lock);
         sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
         //TODO: debugging only tcp messages
-        if (!header->src_port) {
+        //if (header->src_port) {
             log({
                 printf("MUX: Forwarding %d bytes via ", n);
                 print_header(header, false);
                 puts("");
             });
-        }
+        //}
         pthread_mutex_unlock(lock);
     }
     free(buffer);
@@ -725,11 +725,11 @@ int main(int argc, char *argv[]) {
 
     set_mac(mac_to_local.mac, 0xfc, 0x60, 0x1d, 0xbb, 0xf0, 0x7a);
     //mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
-    mac_to_local.local_ip = ip_to_int(192, 168, 1, 1);
+    mac_to_local.local_ip = ip_to_int(192, 168, 1, 2);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
     set_mac(mac_to_local.mac, 0x78, 0xdc, 0x81, 0x94, 0x83, 0xbd);
     //mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
-    mac_to_local.local_ip = ip_to_int(192, 168, 1, 2);
+    mac_to_local.local_ip = ip_to_int(192, 168, 1, 1);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
 
     struct ReceiveBuffer rx = {.buf = malloc(RECV_BUFSIZE), .pos = 0};
