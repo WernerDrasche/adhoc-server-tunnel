@@ -286,8 +286,8 @@ void *dmux_thread(void *arg) {
                     pthread_rwlock_unlock(&deletion);
                     continue;
                 }
-                for (struct ThreadInfo *current = info->common->info; current != NULL; current = current->next) {
-                    if (current->dest == header.src && current->src_port == 0 && current->protocol == PROTOCOL_TCP) {
+                for (struct ThreadInfo *current = thread_group->info; current != NULL; current = current->next) {
+                    if (current->src_port == 0 && current->protocol == PROTOCOL_TCP) {
                         delete_thread(current);
                         break;
                     }
