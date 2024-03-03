@@ -241,7 +241,7 @@ void *dmux_thread(void *arg) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
-        if (tunnel->protocol == PROTOCOL_TCP) printf("key = %llu\n", key);
+        if (tunnel->protocol == PROTOCOL_TCP) printf("key = %lu\n", key);
         uint16_t len = header.len;
         if (tunnel->protocol == PROTOCOL_TCP) printf("len = %u\n", header.len);
         pthread_rwlock_rdlock(&deletion);
