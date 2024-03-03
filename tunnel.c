@@ -508,7 +508,9 @@ void *mux_thread(void *arg) {
                 });
                 *data = TCP_DISCONNECT;
                 header->len = 0;
+                pthread_mutex_lock(lock);
                 sendall(dest, buffer, 1 + HEADER_SIZE, 0, 0);
+                pthread_mutex_unlock(lock);
                 break;
             }
             header->src_ip = info->src_ip;
@@ -595,7 +597,7 @@ void *mux_thread_server(void *arg) {
         log({
             print_thread(info);
             //puts("BLUBLU");
-            printf(" is forwarding TCP connect message ");
+            printf(" is forwarding TCP connect message via ");
             print_header(header, false);
             puts("");
         });
@@ -609,7 +611,7 @@ void *mux_thread_server(void *arg) {
         struct ThreadInfo *conn_info = malloc(sizeof(struct ThreadInfo));
         //puts("FUFU");
         *conn_info = (struct ThreadInfo){
-            .common = info->common,
+            .common = thread_group,
             .src_ip = src_ip,
             .src_port = src_port,
             .dest_port = dest_port,
