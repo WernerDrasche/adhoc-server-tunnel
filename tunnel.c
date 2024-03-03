@@ -240,7 +240,9 @@ void *dmux_thread(void *arg) {
     while (running && !tunnel->stop) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
-        uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
+        //fancy but I'm to stupid to make it work propery
+        //uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
+        uint64_t key = header.src_port ? connkey(header.dest_ip, header.dest_port, header.src_port) : header.dest_port;
         uint16_t len = header.len;
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
