@@ -286,7 +286,13 @@ void *dmux_thread(void *arg) {
                     pthread_rwlock_unlock(&deletion);
                     continue;
                 }
-                int stream = create_connected_socket(htonl(local_ip), header.dest_port);
+                for (struct ThreadInfo *current = info->common->info; current != NULL; current = current->next) {
+                    if (current->dest == header.src && current->src_port == 0 && current->protocol == PROTOCOL_TCP) {
+                        delete_thread(current);
+                        break;
+                    }
+                }
+                int stream = create_connected_socket(htonl(local_ip), header.dest_port, htonl(header.src_ip), header.src_port);
                 if (stream == -1) {
                     log({
                         printf("WARN: couldn't create connection to ");
@@ -412,7 +418,7 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
                 print_ip(ip);
                 puts("");
             });
-            stream = create_connected_socket(htonl(ip), TUNNEL_PORT);
+            stream = create_connected_socket(htonl(ip), TUNNEL_PORT, 0, 0);
             set_recv_timeout(stream, 50000);
             break;
         case MODE_LISTEN:
@@ -708,7 +714,7 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
     signal(SIGTERM, interrupt);
-    int server = create_connected_socket(inet_addr("192.168.178.57"), SERVER_PORT);
+    int server = create_connected_socket(inet_addr("192.168.178.57"), SERVER_PORT, 0, 0);
     if (server == -1) {
         printf("Couldn't connect to adhoc server.\n");
         exit(EXIT_FAILURE);
