@@ -51,7 +51,7 @@ struct MacMapEntry *mac_map = NULL;
 void add_local_addr(SceNetAdhocctlLocalPacketT2S packet)
 {
     uint64_t mac = mac_to_int(packet.mac);
-    printf("Adding %llx -> %d\n", mac, packet.local_ip);
+    printf("Adding %lx -> %d\n", mac, packet.local_ip);
     hmput(mac_map, mac, packet.local_ip);
 }
 
