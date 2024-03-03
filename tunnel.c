@@ -436,7 +436,7 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
             FD_ZERO(&rfds);
             FD_SET(sock, &rfds);
             struct timeval tv = {.tv_sec = 5, .tv_usec = 0};
-            int sel_result = select(1, &rfds, NULL, NULL, &tv);
+            int sel_result = select(sock + 1, &rfds, NULL, NULL, &tv);
             if (sel_result > 0) {
                 stream = accept(sock, (struct sockaddr *)&sockaddr, &socklen);
                 change_blocking_mode(stream, 0);
