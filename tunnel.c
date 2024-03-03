@@ -504,7 +504,7 @@ void *mux_thread(void *arg) {
             if (n == -1 || n == 0) {
                 log({
                     print_thread(info);
-                    printf(" is forwarding a TCP disconnect message\n");
+                    printf(" is forwarding a TCP disconnect message (n=%d, errno=%d)\n", n, errno);
                 });
                 *data = TCP_DISCONNECT;
                 header->len = 0;
