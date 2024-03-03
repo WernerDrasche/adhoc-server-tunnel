@@ -29,7 +29,7 @@ pthread_rwlock_t deletion;
 pthread_mutex_t log_lock;
 uint32_t local_ips[SUBNET_SIZE] = {0};
 // reverse of local_ips (hash map)
-struct VirtLocalEntry *virt_ips = NULL;
+struct LocalVirtEntry *virt_ips = NULL;
 volatile bool running = true;
 struct Game *games = NULL;
 size_t current_game = -1;
@@ -544,10 +544,8 @@ void *mux_thread(void *arg) {
             if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
             if (n == -1 || n == 0) break;
             uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
-            //TODO: make a reverse hash map for this
-            int i;
-            for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
-            if (i == SUBNET_SIZE) {
+            int i = hmgeti(virt_ips, local_ip);
+            if (i == -1) {
                 log({
                     printf("UDP message from ");
                     print_ip(local_ip);
@@ -555,7 +553,7 @@ void *mux_thread(void *arg) {
                 });
                 continue;
             }
-            header->src_ip = i + SUBNET_BASE;
+            header->src_ip = virt_ips[i];
             header->src_port = 0; // indicates UDP
         }
         header->len = n;
