@@ -241,12 +241,12 @@ void *dmux_thread(void *arg) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
-        if (tunnel->protocol == PROTOCOL_TCP) printf("key = %lu\n", key);
+        if (header.src_port) printf("key = %lu\n", key);
         uint16_t len = header.len;
-        if (tunnel->protocol == PROTOCOL_TCP) printf("len = %u\n", header.len);
+        if (header.src_port) printf("len = %u\n", header.len);
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
-        if (tunnel->protocol == PROTOCOL_TCP) {
+        if (header.src_port) {
             log({
                 printf("sending from ");
                 print_ip(thread_group->dest_ip);
@@ -367,11 +367,11 @@ void *dmux_thread(void *arg) {
                 sendall(conn->stream, buffer, header.len, 0, 0);
             } else {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
-                log({
-                    printf("DMUX: Forwarding %d bytes over UDP from ", header.len);
-                    print_header(&header, true);
-                    puts("");
-                });
+                //log({
+                    //printf("DMUX: Forwarding %d bytes over UDP from ", header.len);
+                    //print_header(&header, true);
+                    //puts("");
+                //});
                 if (local_ip != 0)
                     sendall(conn->stream, buffer, header.len, htonl(local_ip), header.dest_port);
                 else {
@@ -540,13 +540,13 @@ void *mux_thread(void *arg) {
         pthread_mutex_lock(lock);
         sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
         //TODO: debugging only tcp messages
-        //if (header->src_port) {
+        if (header->src_port) {
             log({
                 printf("MUX: Forwarding %d bytes via ", n);
                 print_header(header, false);
                 puts("");
             });
-        //}
+        }
         pthread_mutex_unlock(lock);
     }
     free(buffer);
