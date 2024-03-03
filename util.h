@@ -1,7 +1,7 @@
 #include <netinet/in.h>
 #include <stdint.h>
 
-#define mac_to_int(mac) (*(uint64_t *)(void *)&(uint8_t[8]){0, 0, mac.data[5], mac.data[4], mac.data[3], mac.data[2], mac.data[1], mac.data[0]})
+#define mac_to_int(mac) (*(uint64_t *)(void *)&(uint8_t[8]){mac.data[5], mac.data[4], mac.data[3], mac.data[2], mac.data[1], mac.data[0], 0, 0,})
 #define set_mac(mac, m5, m4, m3, m2, m1, m0) {mac.data[0]=m5;mac.data[1]=m4;mac.data[2]=m3;mac.data[3]=m2;mac.data[4]=m1;mac.data[5]=m0;}
 #define ip_to_int(a3, a2, a1, a0) (((a3) << 24) + ((a2) << 16) + ((a1) << 8) + (a0))
 #define connkey(ip, loc, rem) (((uint64_t)(ip) << 32) + ((uint64_t)(loc) << 16) + (uint64_t)(rem))
