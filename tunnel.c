@@ -28,6 +28,8 @@ struct ThreadGroupInfo thread_groups[SUBNET_SIZE] = {0};
 pthread_rwlock_t deletion;
 pthread_mutex_t log_lock;
 uint32_t local_ips[SUBNET_SIZE] = {0};
+// reverse of local_ips (hash map)
+struct VirtLocalEntry *virt_ips = NULL;
 volatile bool running = true;
 struct Game *games = NULL;
 size_t current_game = -1;
@@ -200,6 +202,7 @@ bool handle_connect(int server, struct ReceiveBuffer *rx, SceNetAdhocctlConnectP
         puts("");
     });
     local_ips[packet.virt_ip - SUBNET_BASE] = packet.ip;
+    hmput(virt_ips, packet.ip, packet.virt_ip);
     int i;
     for (i = 0; i < SUBNET_SIZE; ++i) {
         if (thread_groups[i].dest_ip == 0) continue;
@@ -872,6 +875,7 @@ int main(int argc, char *argv[]) {
         arrfree(games[i].ports);
     }
     arrfree(games);
+    hmfree(virt_ips);
     close(server);
     close(peer_listener);
     free(rx.buf);
