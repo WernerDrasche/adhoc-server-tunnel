@@ -241,16 +241,16 @@ void *dmux_thread(void *arg) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
-        if (header.src_port) printf("key = %lu\n", key);
         uint16_t len = header.len;
-        if (header.src_port) printf("len = %u\n", header.len);
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
         if (header.src_port) {
             log({
-                printf("sending from ");
+                printf("sending %d bytes from ", len);
                 print_ip(thread_group->dest_ip);
-                puts("");
+                printf("\nkey(");
+                print_ip(header.dest_ip);
+                printf(", %d, %d) = %lu vs actual_key = %lu\n", header.dest_port, header.src_port, connkey(header.dest_ip, header.dest_port, header.src_port), key);
             });
         }
         if (thread_group->dest_ip == 0) {
