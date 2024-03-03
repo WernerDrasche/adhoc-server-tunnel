@@ -667,10 +667,9 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
             .protocol = ports[i].protocol,
         };
         if (info->protocol == PROTOCOL_TCP) {
-            int server = create_listen_socket(htonl(dest_ip), dest_port);
+            int server = create_listen_socket(htonl(thread_group->dest_ip), info->dest_port);
             info->stream = server;
             change_blocking_mode(server, 1);
-            //for openbsd the accepts don't time out apparently (linux they do)
             //set_recv_timeout(server, 50000);
             pthread_create(&info->thread, NULL, mux_thread_server, info);
         }
