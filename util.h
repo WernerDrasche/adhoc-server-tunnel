@@ -27,7 +27,7 @@ int create_listen_socket(in_addr_t ip, uint16_t port);
  * @param port TCP Port
  * @return Socket Descriptor
  */
-int create_connected_socket(in_addr_t ip, uint16_t port);
+int create_connected_socket(in_addr_t dest_ip, uint16_t dest_port, in_addr_t src_ip, uint16_t src_port);
 
 /**
  * Enable Address Reuse on Socket
