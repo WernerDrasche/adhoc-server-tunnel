@@ -198,7 +198,7 @@ int server_loop(int server)
 
                     else if (user->rx[0] == OPCODE_LOCAL)
                     {
-                        puts("got local");
+                        //puts("got local");
                         add_local_addr(*(SceNetAdhocctlLocalPacketT2S *)user->rx);
                         clear_user_rxbuf(user, sizeof(SceNetAdhocctlLocalPacketT2S));
                     }
