@@ -53,6 +53,7 @@ void add_local_addr(SceNetAdhocctlLocalPacketT2S packet)
     uint64_t mac = mac_to_int(packet.mac);
     printf("Adding %lx -> ", mac);
     print_ip(packet.local_ip);
+    puts("");
     hmput(mac_map, mac, packet.local_ip);
 }
 
