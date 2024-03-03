@@ -45,7 +45,7 @@ int create_udp_socket(in_addr_t ip, uint16_t port)
     return -1;
 }
 
-int create_connected_socket(in_addr_t ip, uint16_t port)
+int create_connected_socket(in_addr_t dest_ip, uint16_t dest_port, in_addr_t src_ip, uint16_t src_port)
 {
     int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (fd != -1)
@@ -54,8 +54,17 @@ int create_connected_socket(in_addr_t ip, uint16_t port)
         struct sockaddr_in server;
         memset(&server, 0, sizeof(server));
         server.sin_family = AF_INET;
-        server.sin_addr.s_addr = ip;
-        server.sin_port = htons(port);
+        if (src_ip) {
+            server.sin_addr.s_addr = src_ip;
+            server.sin_port = htons(src_port);
+            if (bind(fd, (struct sockaddr *)&server, sizeof(server)) == -1) {
+                perror("ERROR: Couldn't bind tcp socket");
+                close(fd);
+                return -1;
+            }
+        }
+        server.sin_addr.s_addr = dest_ip;
+        server.sin_port = htons(dest_port);
         int result = connect(fd, (struct sockaddr *)&server, sizeof(server));
         if (result != -1) return fd;
         perror("ERROR: Couldn't connect tcp socket");
