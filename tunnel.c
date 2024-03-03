@@ -764,20 +764,20 @@ int main(int argc, char *argv[]) {
             } else if (rx.buf[0] == OPCODE_PORTS) {
                 SceNetAdhocctlPortPacketS2T packet = *(SceNetAdhocctlPortPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
-                if (packet.protocol == PROTOCOL_TCP) printf("TCP "); else printf("UDP ");
-                printf("%d\n", packet.port);
+                //if (packet.protocol == PROTOCOL_TCP) printf("TCP "); else printf("UDP ");
+                //printf("%d\n", packet.port);
                 struct Port port = {
                     .protocol = packet.protocol,
                     .port = packet.port
                 };
                 arrput(games[current_game].ports, port);
             } else if (rx.buf[0] == OPCODE_PORTS_COMPLETE) {
-                puts("finished ports");
+                //puts("finished ports");
                 // we rely on the fact that ports will always finish before peers (enforced by handle_connect)
                 clear_rxbuf(&rx, 1);
                 print_game(&games[current_game]);
             } else if (rx.buf[0] == OPCODE_PEERS) {
-                puts("got a peer");
+                //puts("got a peer");
                 SceNetAdhocctlPeerPacketS2T packet = *(SceNetAdhocctlPeerPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.pub_ip, MODE_CONNECT);
@@ -792,11 +792,11 @@ int main(int argc, char *argv[]) {
                 pthread_rwlock_init(&thread_group->rwlock, NULL);
                 create_mux_threads(thread_group);
             } else if (rx.buf[0] == OPCODE_PEERS_COMPLETE) {
-                puts("finished peers");
+                //puts("finished peers");
                 passive_mode = true;
                 clear_rxbuf(&rx, 1);
             } else if (rx.buf[0] == OPCODE_LISTEN) {
-                puts("got a listen");
+                //puts("got a listen");
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.ip, MODE_LISTEN);
