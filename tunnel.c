@@ -244,21 +244,19 @@ void *dmux_thread(void *arg) {
     while (running && !tunnel->stop) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
-        //fancy but I'm to stupid to make it work propery
+        //fancy but I'm to stupid to make it work propery (maybe low address is at last field of struct?)
         //uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
         uint64_t key = header.src_port ? connkey(header.dest_ip, header.dest_port, header.src_port) : header.dest_port;
         uint16_t len = header.len;
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
-        if (header.src_port) {
-            log({
-                printf("sending %d bytes from ", len);
-                print_ip(thread_group->dest_ip);
-                printf("\nkey(");
-                print_ip(header.dest_ip);
-                printf(", %d, %d) = %lu vs actual_key = %lu\n", header.dest_port, header.src_port, connkey(header.dest_ip, header.dest_port, header.src_port), key);
-            });
-        }
+        //log({
+            //printf("sending %d bytes from ", len);
+            //print_ip(thread_group->dest_ip);
+            //printf("\nkey(");
+            //print_ip(header.dest_ip);
+            //printf(", %d, %d) = %lu vs actual_key = %lu\n", header.dest_port, header.src_port, connkey(header.dest_ip, header.dest_port, header.src_port), key);
+        //});
         if (thread_group->dest_ip == 0) {
             log({
                 printf("WARN: unsolicited connection attempt from ");
@@ -364,12 +362,9 @@ void *dmux_thread(void *arg) {
         }
         pthread_rwlock_rdlock(&thread_group->rwlock);
         int i = hmgeti(thread_group->conn_map, key);
-        //printf("i = %i\n", i);
         if (i != -1) {
-            //puts("HIIHHI");
             struct Connection *conn = thread_group->conn_map[i].value;
             pthread_mutex_lock(&conn->lock);
-            //puts("HAHAHAH");
             if (header.src_port) {
                 log({
                     printf("DMUX: Forwarding %d bytes over TCP from ", header.len);
@@ -559,14 +554,11 @@ void *mux_thread(void *arg) {
         header->len = n;
         pthread_mutex_lock(lock);
         sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
-        //TODO: debugging only tcp messages
-        if (header->src_port) {
-            log({
-                printf("MUX: Forwarding %d bytes via ", n);
-                print_header(header, false);
-                puts("");
-            });
-        }
+        //log({
+            //printf("MUX: Forwarding %d bytes via ", n);
+            //print_header(header, false);
+            //puts("");
+        //});
         pthread_mutex_unlock(lock);
     }
     free(buffer);
@@ -596,7 +588,6 @@ void *mux_thread_server(void *arg) {
         set_recv_timeout(fd, 50000);
         uint16_t src_port = ntohs(sockaddr.sin_port);
         uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
-        //puts("gugu");
         int i;
         for (i = 0; i < SUBNET_SIZE && local_ips[i] != local_ip; ++i);
         if (i == SUBNET_SIZE) {
@@ -608,27 +599,21 @@ void *mux_thread_server(void *arg) {
             close(fd);
             continue;
         }
-        //puts("GAGA");
         uint32_t src_ip = SUBNET_BASE + i;
         header->src_ip = src_ip;
         header->src_port = src_port;
-        //puts("BLIBLI");
         log({
             print_thread(info);
-            //puts("BLUBLU");
             printf(" is forwarding TCP connect message via ");
             print_header(header, false);
             puts("");
         });
         sendall(dest, ctrl_buf, HEADER_SIZE + 1, 0, 0);
-        //puts("KJLFJDKLJ");
         struct Connection *conn = malloc(sizeof(struct Connection));
-        //puts("FIFI");
         conn->stream = fd;
         pthread_mutex_init(&conn->lock, NULL);
         struct ThreadGroupInfo *thread_group = info->common;
         struct ThreadInfo *conn_info = malloc(sizeof(struct ThreadInfo));
-        //puts("FUFU");
         *conn_info = (struct ThreadInfo){
             .common = thread_group,
             .src_ip = src_ip,
@@ -639,7 +624,6 @@ void *mux_thread_server(void *arg) {
         };
         pthread_rwlock_wrlock(&thread_group->rwlock);
         hmput(thread_group->conn_map, connkey(src_ip, src_port, dest_port), conn);
-        //puts("baba");
         struct ThreadInfo *current = info->common->info;
         while (current->next != NULL) current = current->next;
         current->next = conn_info;
@@ -780,7 +764,6 @@ int main(int argc, char *argv[]) {
         if (result == 0 || (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) break;
         if (result > 0 || rx.pos > 0) {
             if (result > 0) {
-                printf("received %d bytes\n", result);
                 rx.pos += result;
             }
             if (rx.buf[0] == OPCODE_CONNECT) {
@@ -799,12 +782,10 @@ int main(int argc, char *argv[]) {
                 };
                 arrput(games[current_game].ports, port);
             } else if (rx.buf[0] == OPCODE_PORTS_COMPLETE) {
-                //puts("finished ports");
                 // we rely on the fact that ports will always finish before peers (enforced by handle_connect)
                 clear_rxbuf(&rx, 1);
                 print_game(&games[current_game]);
             } else if (rx.buf[0] == OPCODE_PEERS) {
-                //puts("got a peer");
                 SceNetAdhocctlPeerPacketS2T packet = *(SceNetAdhocctlPeerPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.pub_ip, MODE_CONNECT);
@@ -819,11 +800,9 @@ int main(int argc, char *argv[]) {
                 pthread_rwlock_init(&thread_group->rwlock, NULL);
                 create_mux_threads(thread_group);
             } else if (rx.buf[0] == OPCODE_PEERS_COMPLETE) {
-                //puts("finished peers");
                 passive_mode = true;
                 clear_rxbuf(&rx, 1);
             } else if (rx.buf[0] == OPCODE_LISTEN) {
-                //puts("got a listen");
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.ip, MODE_LISTEN);
