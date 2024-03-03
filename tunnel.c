@@ -740,7 +740,8 @@ int main(int argc, char *argv[]) {
     //mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
     mac_to_local.local_ip = ip_to_int(192, 168, 1, 13);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
-    set_mac(mac_to_local.mac, 0x08, 0x12, 0x1b, 0x80, 0xff, 0xec);
+    set_mac(mac_to_local.mac, 0x00, 0x02, 0x02, 0x02, 0x02, 0x02);
+    //set_mac(mac_to_local.mac, 0x08, 0x12, 0x1b, 0x80, 0xff, 0xec);
     //mac_to_local.local_ip = ip_to_int(192, 168, 178, 24);
     mac_to_local.local_ip = ip_to_int(192, 168, 1, 13);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
