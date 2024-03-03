@@ -553,7 +553,7 @@ void *mux_thread(void *arg) {
                 });
                 continue;
             }
-            header->src_ip = virt_ips[i];
+            header->src_ip = virt_ips[i].value;
             header->src_port = 0; // indicates UDP
         }
         header->len = n;
