@@ -745,6 +745,7 @@ int main(int argc, char *argv[]) {
 
     struct ReceiveBuffer rx = {.buf = malloc(RECV_BUFSIZE), .pos = 0};
     bool passive_mode = true;
+    running = true;
     while (running) {
         int result = recv(server, rx.buf + rx.pos, RECV_BUFSIZE - rx.pos, 0);
         if (result == 0 || (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) break;
