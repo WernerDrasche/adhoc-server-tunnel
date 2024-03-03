@@ -241,16 +241,18 @@ void *dmux_thread(void *arg) {
         if (recvall(src, buffer, HEADER_SIZE, &tunnel->stop) == -1) break;
         struct Header header = *(struct Header *)buffer;
         uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
-        //printf("key = %llu\n", key);
+        if (tunnel->protocol == PROTOCOL_TCP) printf("key = %llu\n", key);
         uint16_t len = header.len;
-        //printf("len = %u\n", header.len);
+        if (tunnel->protocol == PROTOCOL_TCP) printf("len = %u\n", header.len);
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
-        //log({
-        //    printf("sending from ");
-        //    print_ip(thread_group->dest_ip);
-        //    puts("");
-        //});
+        if (tunnel->protocol == PROTOCOL_TCP) {
+            log({
+                printf("sending from ");
+                print_ip(thread_group->dest_ip);
+                puts("");
+            });
+        }
         if (thread_group->dest_ip == 0) {
             log({
                 printf("WARN: unsolicited connection attempt from ");
@@ -499,6 +501,8 @@ void *mux_thread(void *arg) {
     while (running && !info->stop) {
         int n = 0;
         if (info->protocol == PROTOCOL_TCP) {
+            header->src_ip = info->src_ip;
+            header->src_port = info->src_port;
             n = recv(src, data, RECV_BUFSIZE, 0);
             if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
             if (n == -1 || n == 0) {
@@ -513,8 +517,6 @@ void *mux_thread(void *arg) {
                 pthread_mutex_unlock(lock);
                 break;
             }
-            header->src_ip = info->src_ip;
-            header->src_port = info->src_port;
         } else if (info->protocol == PROTOCOL_UDP) {
             n = recvfrom(src, data, RECV_BUFSIZE, 0, (struct sockaddr *)&sockaddr, &socklen);
             if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
