@@ -704,7 +704,7 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
     signal(SIGTERM, interrupt);
-    int server = create_connected_socket(inet_addr("192.168.178.124"), SERVER_PORT);
+    int server = create_connected_socket(inet_addr("192.168.178.57"), SERVER_PORT);
     if (server == -1) {
         printf("Couldn't connect to adhoc server.\n");
         exit(EXIT_FAILURE);
