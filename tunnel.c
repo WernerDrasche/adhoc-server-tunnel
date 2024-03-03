@@ -736,6 +736,13 @@ int main(int argc, char *argv[]) {
     mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
     send(server, &mac_to_local, sizeof(mac_to_local), 0);
 
+    set_mac(mac_to_local.mac, 0x10, 0x17, 0xd3, 0xdc, 0xf7, 0x2d);
+    mac_to_local.local_ip = ip_to_int(192, 168, 1, 13);
+    send(server, &mac_to_local, sizeof(mac_to_local), 0);
+    set_mac(mac_to_local.mac, 0x78, 0xdc, 0x81, 0x94, 0x83, 0xbd);
+    mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
+    send(server, &mac_to_local, sizeof(mac_to_local), 0);
+
     struct ReceiveBuffer rx = {.buf = malloc(RECV_BUFSIZE), .pos = 0};
     bool passive_mode = true;
     while (running) {
