@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <stdbool.h>
 #include <pthread.h>
 #include <signal.h>
@@ -429,9 +430,19 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
                 print_ip(ip);
                 puts("");
             });
-            stream = accept(sock, (struct sockaddr *)&sockaddr, &socklen);
-            //change_blocking_mode(stream, 1);
-            set_recv_timeout(stream, 50000);
+            //because accept apparently does not care about timeout
+            change_blocking_mode(sock, 1);
+            fd_set rfds;
+            FD_ZERO(&rfds);
+            FD_SET(sock, &rfds);
+            struct timeval tv = {.tv_sec = 5, .tv_usec = 0};
+            int sel_result = select(1, &rfds, NULL, NULL, &tv);
+            if (sel_result > 0) {
+                stream = accept(sock, (struct sockaddr *)&sockaddr, &socklen);
+                change_blocking_mode(stream, 0);
+                set_recv_timeout(stream, 50000);
+            } else stream = -1;
+            change_blocking_mode(sock, 0);
             break;
         default: unreachable();
     }
@@ -567,10 +578,7 @@ void *mux_thread_server(void *arg) {
     uint32_t dest_ip = info->common->dest_ip;
     uint16_t dest_port = info->dest_port;
     int dest = info->common->tunnel->stream;
-    int server = create_listen_socket(htonl(dest_ip), dest_port);
-    change_blocking_mode(server, 1);
-    //for openbsd the accepts don't time out apparently (linux they do)
-    //set_recv_timeout(server, 50000);
+    int server = info->stream;
     uint8_t ctrl_buf[HEADER_SIZE + 1];
     struct Header *header = (struct Header *)ctrl_buf;
     header->len = 0;
@@ -658,8 +666,14 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
             .dest_port = ports[i].port,
             .protocol = ports[i].protocol,
         };
-        if (info->protocol == PROTOCOL_TCP)
+        if (info->protocol == PROTOCOL_TCP) {
+            int server = create_listen_socket(htonl(dest_ip), dest_port);
+            info->stream = server;
+            change_blocking_mode(server, 1);
+            //for openbsd the accepts don't time out apparently (linux they do)
+            //set_recv_timeout(server, 50000);
             pthread_create(&info->thread, NULL, mux_thread_server, info);
+        }
         else if (info->protocol == PROTOCOL_UDP) {
             info->src_port = 0;
             int stream = create_udp_socket(htonl(thread_group->dest_ip), info->dest_port);
