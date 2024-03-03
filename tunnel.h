@@ -35,6 +35,13 @@ struct ConnectionMapEntry {
     struct Connection *value;
 };
 
+struct LocalVirtEntry {
+    // local ip
+    uint32_t key;
+    // virt ip
+    uint32_t value;
+};
+
 struct ThreadGroupInfo {
     struct Tunnel *tunnel;
     uint32_t dest_ip;
