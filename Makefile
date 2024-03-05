@@ -1,4 +1,4 @@
-CC = egcc
+CC = gcc
 CFLAGS_SERVER = -I. -fpack-struct
 OBJ_SERVER = main.o user.o status.o util.o
 SERVER = server
