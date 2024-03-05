@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
+#include <inttypes.h>
 #include "stb_ds.h"
 #include "packets.h"
 #include "util.h"
@@ -76,6 +77,62 @@ void print_game(struct Game *game) {
     free(product_code);
 }
 
+int parse_mac(SceNetEtherAddr *mac, FILE *file) {
+    int i = 0;
+    while (i < ETHER_ADDR_LEN) {
+        uint8_t acc = 0;
+        int j = 1;
+        while (j >= 0) {
+            uint8_t c;
+            if (fread(&c, 1, 1, file) != 1) {
+                // check if we did not start parsing yet
+                return (i == 0 && j == 1) ? 1 : -1;
+            }
+            if ('0' <= c && c <= '9')
+                c -= '0';
+            else if ('A' <= c && c <= 'F')
+                c -= 'A' - 10;
+            else if ('a' <= c && c <= 'f')
+                c -= 'a' - 10;
+            else continue;
+            acc |= c << (j * 4);
+            --j;
+        }
+        mac->data[i] = acc;
+        ++i;
+    }
+    return 0;
+}
+
+int parse_ip(uint32_t *ip, FILE *file) {
+    *ip = 0;
+    int i = 3;
+    while (i >= 0) {
+        uint8_t acc = 0;
+        int j = 0;
+        while (j < 3) {
+            uint8_t c;
+            if (fread(&c, 1, 1, file) != 1) {
+                // check if we are in last group and read at least 1 digit
+                return (i == 0 && j > 0) ? 1 : -1;
+            }
+            if (c == '.' || c == '\n') {
+                if (j > 0) break;
+                continue;
+            }
+            if ('0' <= c && c <= '9')
+                c -= '0';
+            else continue;
+            acc *= 10;
+            acc += c;
+            ++j;
+        }
+        *ip |= acc << (i * 8);
+        --i;
+    }
+    return 0;
+}
+
 void interrupt(int sig) {
     puts("Shutting down... please wait.");
     for (int i = 0; i < SUBNET_SIZE; ++i) {
@@ -94,7 +151,6 @@ void unreachable() {
 void clear_rxbuf(struct ReceiveBuffer *rx, int clear) {
     //printf("clearing %d bytes and rxpos = %lu\n", clear, rx->pos);
     if(clear == -1 || clear > rx->pos) {
-        //puts("FUCK");
         clear = rx->pos;
     }
     memmove(rx->buf, rx->buf + clear, rx->pos - clear);
@@ -251,11 +307,11 @@ void *dmux_thread(void *arg) {
         pthread_rwlock_rdlock(&deletion);
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
         //log({
-            //printf("sending %d bytes from ", len);
-            //print_ip(thread_group->dest_ip);
-            //printf("\nkey(");
-            //print_ip(header.dest_ip);
-            //printf(", %d, %d) = %lu vs actual_key = %lu\n", header.dest_port, header.src_port, connkey(header.dest_ip, header.dest_port, header.src_port), key);
+        //    printf("sending %d bytes from ", len);
+        //    print_ip(thread_group->dest_ip);
+        //    printf("\nkey(");
+        //    print_ip(header.dest_ip);
+        //    printf(", %d, %d) = %lu vs actual_key = %lu\n", header.dest_port, header.src_port, connkey(header.dest_ip, header.dest_port, header.src_port), key);
         //});
         if (thread_group->dest_ip == 0) {
             log({
@@ -375,9 +431,9 @@ void *dmux_thread(void *arg) {
             } else {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
                 //log({
-                    //printf("DMUX: Forwarding %d bytes over UDP from ", header.len);
-                    //print_header(&header, true);
-                    //puts("");
+                //    printf("DMUX: Forwarding %d bytes over UDP from ", header.len);
+                //    print_header(&header, true);
+                //    puts("");
                 //});
                 if (local_ip != 0)
                     sendall(conn->stream, buffer, header.len, htonl(local_ip), header.dest_port);
@@ -555,9 +611,9 @@ void *mux_thread(void *arg) {
         pthread_mutex_lock(lock);
         sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
         //log({
-            //printf("MUX: Forwarding %d bytes via ", n);
-            //print_header(header, false);
-            //puts("");
+        //    printf("MUX: Forwarding %d bytes via ", n);
+        //    print_header(header, false);
+        //    puts("");
         //});
         pthread_mutex_unlock(lock);
     }
@@ -710,20 +766,30 @@ void garbage_collect() {
 }
 
 int main(int argc, char *argv[]) {
+    if (argc == 1) {
+        printf("Usage: %s [ip of adhoc-server] [optional: config file path (default is 'config')]", argv[0]);
+        exit(EXIT_FAILURE);
+    }
     pthread_rwlock_init(&deletion, NULL);
     pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
     signal(SIGTERM, interrupt);
-    int server = create_connected_socket(inet_addr("192.168.178.57"), SERVER_PORT, 0, 0);
+    char *config_name = argc == 3 ? argv[2] : "config";
+    FILE *config_file = fopen(config_name, "r");
+    if (config_file == NULL) {
+        perror("ERROR: Failed to open config file");
+        exit(EXIT_FAILURE);
+    }
+    int server = create_connected_socket(inet_addr(argv[1]), SERVER_PORT, 0, 0);
     if (server == -1) {
-        printf("Couldn't connect to adhoc server.\n");
+        printf("ERROR: Couldn't connect to adhoc server.\n");
         exit(EXIT_FAILURE);
     }
     //change_blocking_mode(server, 1);
     set_recv_timeout(server, 50000);
     int peer_listener = create_listen_socket(INADDR_ANY, TUNNEL_PORT);
     if (peer_listener == -1) {
-        printf("Couldn't create peer listening socket.\n");
+        printf("ERROR: Couldn't create peer listening socket.\n");
         exit(EXIT_FAILURE);
     }
     set_recv_timeout(peer_listener, 5000000);
@@ -732,33 +798,38 @@ int main(int argc, char *argv[]) {
 
     SceNetAdhocctlLocalPacketT2S mac_to_local;
     mac_to_local.base.opcode = OPCODE_LOCAL;
-    set_mac(mac_to_local.mac, 0x70, 0x77, 0x81, 0xe5, 0x77, 0xe0);
-    mac_to_local.local_ip = ip_to_int(192, 168, 178, 179);
-    send(server, &mac_to_local, sizeof(mac_to_local), 0);
-    set_mac(mac_to_local.mac, 0xcc, 0x58, 0x56, 0xd2, 0x55, 0xd3);
-    mac_to_local.local_ip = ip_to_int(192, 168, 178, 37);
-    send(server, &mac_to_local, sizeof(mac_to_local), 0);
-
-    //set_mac(mac_to_local.mac, 0xfc, 0x60, 0x1d, 0xbb, 0xf0, 0x7a);
-    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
-    //send(server, &mac_to_local, sizeof(mac_to_local), 0);
-    //set_mac(mac_to_local.mac, 0x78, 0xdc, 0x81, 0x94, 0x83, 0xbd);
-    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 57);
-    //send(server, &mac_to_local, sizeof(mac_to_local), 0);
-
-    set_mac(mac_to_local.mac, 0x10, 0x17, 0xd3, 0xdc, 0xf7, 0x2d);
-    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 124);
-    mac_to_local.local_ip = ip_to_int(192, 168, 1, 13);
-    send(server, &mac_to_local, sizeof(mac_to_local), 0);
-    set_mac(mac_to_local.mac, 0x00, 0x02, 0x02, 0x02, 0x02, 0x02);
-    //set_mac(mac_to_local.mac, 0x08, 0x12, 0x1b, 0x80, 0xff, 0xec);
-    //mac_to_local.local_ip = ip_to_int(192, 168, 178, 24);
-    mac_to_local.local_ip = ip_to_int(192, 168, 1, 13);
-    send(server, &mac_to_local, sizeof(mac_to_local), 0);
-
+    printf("Reading from %s ...\n", config_name);
+    while (true) {
+        int result = parse_mac(&mac_to_local.mac, config_file);
+        if (result) {
+            if (feof(config_file)) {
+                if (result == 1) break;
+                printf("ERROR: reached EOF while parsing mac address");
+            } else {
+                perror("ERROR: during parsing of mac address");
+            }
+            running = false;
+            break;
+        }
+        printf("%"PRIx64, mac_to_int(mac_to_local.mac));
+        result = parse_ip(&mac_to_local.local_ip, config_file);
+        if (result) {
+            if (feof(config_file)) {
+                if (result == 1) break;
+                printf("ERROR: reached EOF while parsing ip address");
+            } else {
+                perror("ERROR: during parsing of ip address");
+            }
+            running = false;
+            break;
+        }
+        printf(" -> ");
+        print_ip(mac_to_local.local_ip);
+        puts("");
+        send(server, &mac_to_local, sizeof(mac_to_local), 0);
+    }
     struct ReceiveBuffer rx = {.buf = malloc(RECV_BUFSIZE), .pos = 0};
     bool passive_mode = true;
-    running = true;
     while (running) {
         int result = recv(server, rx.buf + rx.pos, RECV_BUFSIZE - rx.pos, 0);
         if (result == 0 || (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) break;

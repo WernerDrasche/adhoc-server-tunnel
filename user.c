@@ -32,6 +32,8 @@
 #include "config.h"
 #include "util.h"
 #include <sqlite3.h>
+#include <inttypes.h>
+#include <errno.h>
 
 // User Count
 uint32_t _db_user_count = 0;
@@ -51,7 +53,7 @@ struct MacMapEntry *mac_map = NULL;
 void add_local_addr(SceNetAdhocctlLocalPacketT2S packet)
 {
     uint64_t mac = mac_to_int(packet.mac);
-    printf("Adding %lx -> ", mac);
+    printf("Adding %" PRIx64 " -> ", mac);
     print_ip(packet.local_ip);
     puts("");
     hmput(mac_map, mac, packet.local_ip);
@@ -328,9 +330,7 @@ void free_database(void)
     }
 }
 
-// TODO: error handling if tunnel becomes unresponsive
-// TODO: use the info from game for ports instead of hardcoding
-void connect_tunnel(SceNetAdhocctlUserNode * tunnel, SceNetAdhocctlUserNode * peers, SceNetAdhocctlGameNode * game, SceNetAdhocctlConnectPacketS2T * packet)
+int connect_tunnel(SceNetAdhocctlUserNode * tunnel, SceNetAdhocctlUserNode * peers, SceNetAdhocctlGameNode * game, SceNetAdhocctlConnectPacketS2T * packet)
 {
     send(tunnel->stream, packet, sizeof(*packet), 0);
     SceNetAdhocctlPortPacketS2T port;
@@ -342,6 +342,7 @@ void connect_tunnel(SceNetAdhocctlUserNode * tunnel, SceNetAdhocctlUserNode * pe
     {
         uint8_t opcode;
         int recvresult = recv(tunnel->stream, tunnel->rx + tunnel->rxpos, sizeof(tunnel->rx) - tunnel->rxpos, 0);
+        if (recvresult == 0 || (recvresult == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) return -1;
         if (recvresult > 0 || tunnel->rxpos > 0)
         {
             if (recvresult > 0)
@@ -354,44 +355,20 @@ void connect_tunnel(SceNetAdhocctlUserNode * tunnel, SceNetAdhocctlUserNode * pe
                     break;
                 case OPCODE_PORTS:
                     puts("got opcode ports");
-                    port.port = 10000;
-                    port.protocol = PROTOCOL_TCP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-                    port.protocol = PROTOCOL_UDP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-
-                    port.port = 20001;
-                    port.protocol = PROTOCOL_TCP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-                    port.protocol = PROTOCOL_UDP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-
-                    port.port = 20002;
-                    port.protocol = PROTOCOL_TCP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-                    port.protocol = PROTOCOL_UDP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-
-                    port.port = 20003;
-                    port.protocol = PROTOCOL_TCP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-                    port.protocol = PROTOCOL_UDP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-
-                    port.port = 20004;
-                    port.protocol = PROTOCOL_TCP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-                    port.protocol = PROTOCOL_UDP;
-                    send(tunnel->stream, &port, sizeof(port), 0);
-
-                    port.port = 27312;
-                    port.protocol = PROTOCOL_TCP;
-                    int n = send(tunnel->stream, &port, sizeof(port), 0);
-                    printf("blub: sent %d bytes\n", n);
-                    port.protocol = PROTOCOL_UDP;
-                    n = send(tunnel->stream, &port, sizeof(port), 0);
-                    printf("blibal: sent %d bytes\n", n);
-
+                    struct Port *ports = get_ports(&game->game);
+                    if (ports) {
+                        for (int i = 0; i < arrlen(ports); ++i) {
+                            port.protocol = ports[i].protocol;
+                            port.port = ports[i].port;
+                            send(tunnel->stream, &port, sizeof(port), 0);
+                        }
+                        arrfree(ports);
+                    } else {
+                        char productid[PRODUCT_CODE_LENGTH + 1];
+                        strncpy(productid, game->game.data, PRODUCT_CODE_LENGTH);
+                        productid[PRODUCT_CODE_LENGTH] = 0;
+                        printf("WARN: no port info found for %s\n", productid);
+                    }
                     opcode = OPCODE_PORTS_COMPLETE;
                     break;
                 case OPCODE_PEERS:
@@ -409,11 +386,10 @@ void connect_tunnel(SceNetAdhocctlUserNode * tunnel, SceNetAdhocctlUserNode * pe
             }
             clear_user_rxbuf(tunnel, 1);
             if (!conversation) break;
-            printf("sending opcode %d\n", opcode);
-            int n = send(tunnel->stream, &opcode, 1, 0);
-            printf("sent %d bytes\n", n);
+            send(tunnel->stream, &opcode, 1, 0);
         }
     }
+    return 0;
 }
 
 /**
@@ -534,7 +510,14 @@ void connect_user(SceNetAdhocctlUserNode * user, SceNetAdhocctlGroupName * group
                         }
                         packet.base.opcode = OPCODE_CONNECT;
                         packet.ip = user->local_ip;
-                        connect_tunnel(user->tunnel, g->player, g->game, &packet);
+                        if (connect_tunnel(user->tunnel, g->player, g->game, &packet))
+                        {
+                            printf("WARN: lost connection to tunnel ");
+                            print_ip(user->resolver.ip);
+                            puts(" during local device connect conversation.");
+                            logout_user(user->tunnel);
+                            return;
+                        }
                     }
                 }
 
@@ -1153,3 +1136,39 @@ void game_product_override(SceNetAdhocctlProductCode * product)
     }
 }
 
+struct Port *get_ports(SceNetAdhocctlProductCode * product) {
+    struct Port *ports = NULL;
+    sqlite3 * db = NULL;
+    if (sqlite3_open(SERVER_DATABASE, &db) == SQLITE_OK)
+    {
+        const char * sql = "SELECT protocol, port FROM ports WHERE id=?;";
+        sqlite3_stmt * statement = NULL;
+        if (sqlite3_prepare_v2(db, sql, -1, &statement, NULL) == SQLITE_OK)
+        {
+            if (sqlite3_bind_text(statement, 1, product->data, PRODUCT_CODE_LENGTH, SQLITE_STATIC) == SQLITE_OK)
+            {
+                while (sqlite3_step(statement) == SQLITE_ROW)
+                {
+                    const unsigned char *protocol_str = sqlite3_column_text(statement, 0);
+                    int port = sqlite3_column_int(statement, 1);
+                    uint8_t protocol;
+                    if (!strncmp(protocol_str, "TCP", 3))
+                        protocol = PROTOCOL_TCP;
+                    else if (!strncmp(protocol_str, "UDP", 3))
+                        protocol = PROTOCOL_UDP;
+                    else {
+                        printf("WARN: invalid protocol %s; setting to UDP\n", protocol_str);
+                        protocol = PROTOCOL_UDP;
+                    }
+                    arrput(ports, ((struct Port){
+                        .protocol = protocol,
+                        .port = (uint16_t)port,
+                    }));
+                }
+            }
+            sqlite3_finalize(statement);
+        }
+        sqlite3_close(db);
+    }
+    return ports;
+}

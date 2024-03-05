@@ -1,5 +1,5 @@
 CC = egcc
-CFLAGS = -I. -fpack-struct
+CFLAGS_SERVER = -I. -fpack-struct
 OBJ_SERVER = main.o user.o status.o util.o
 SERVER = server
 OBJ_TUNNEL = tunnel.o util.o
@@ -15,7 +15,7 @@ $(SERVER): $(OBJ_SERVER)
 	$(CC) -o $@ $^ $(LIBS_SERVER) $(CFLAGS)
 
 $(TUNNEL): $(OBJ_TUNNEL)
-	$(CC) -o $@ $^ $(LIBS_TUNNEL) $(CFLAGS)
+	$(CC) -o $@ $^ $(LIBS_TUNNEL)
 
 clean:
 #	rm -rf $(TARGET) *.o *~

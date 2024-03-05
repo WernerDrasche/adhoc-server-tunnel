@@ -32,6 +32,11 @@
 #define USER_STATE_LOGGED_IN 1
 #define USER_STATE_TIMED_OUT 2
 
+struct Port {
+    uint8_t protocol;
+    uint32_t port;
+};
+
 struct MacMapEntry {
     // zero extended mac address
     uint64_t key;
@@ -230,5 +235,7 @@ void game_product_relink(SceNetAdhocctlProductCode * product, char * from, char 
 void game_product_override(SceNetAdhocctlProductCode * product);
 
 void add_local_addr(SceNetAdhocctlLocalPacketT2S packet);
+
+struct Port *get_ports(SceNetAdhocctlProductCode * product);
 
 #endif
