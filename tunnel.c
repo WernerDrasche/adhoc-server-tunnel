@@ -21,6 +21,9 @@
 
 #define log(stmts) {pthread_mutex_lock(&log_lock); stmts; pthread_mutex_unlock(&log_lock);}
 
+//TODO: make accept_timeout util function which uses select (like in get_tunnel)
+//use that function everywhere accept is used right now
+
 const char *const UDP_STR = "UDP";
 const char *const TCP_STR = "TCP";
 
@@ -476,7 +479,6 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
                 puts("");
             });
             stream = create_connected_socket(htonl(ip), TUNNEL_PORT, 0, 0);
-            set_recv_timeout(stream, 50000);
             break;
         case MODE_LISTEN:
             log({
@@ -484,19 +486,14 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
                 print_ip(ip);
                 puts("");
             });
-            //because accept apparently does not care about timeout
-            change_blocking_mode(sock, 1);
             fd_set rfds;
             FD_ZERO(&rfds);
             FD_SET(sock, &rfds);
-            struct timeval tv = {.tv_sec = 5, .tv_usec = 0};
+            struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
             int sel_result = select(sock + 1, &rfds, NULL, NULL, &tv);
             if (sel_result > 0) {
                 stream = accept(sock, (struct sockaddr *)&sockaddr, &socklen);
-                change_blocking_mode(stream, 0);
-                set_recv_timeout(stream, 50000);
             } else stream = -1;
-            change_blocking_mode(sock, 0);
             break;
         default: unreachable();
     }
@@ -640,8 +637,6 @@ void *mux_thread_server(void *arg) {
         int fd = accept(server, (struct sockaddr *)&sockaddr, &socklen);
         if (fd == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
         if (fd == -1) break;
-        //change_blocking_mode(fd, 1);
-        set_recv_timeout(fd, 50000);
         uint16_t src_port = ntohs(sockaddr.sin_port);
         uint32_t local_ip = ntohl(sockaddr.sin_addr.s_addr);
         int i;
@@ -710,15 +705,11 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
         if (info->protocol == PROTOCOL_TCP) {
             int server = create_listen_socket(htonl(thread_group->dest_ip), info->dest_port);
             info->stream = server;
-            change_blocking_mode(server, 1);
-            //set_recv_timeout(server, 50000);
             pthread_create(&info->thread, NULL, mux_thread_server, info);
         }
         else if (info->protocol == PROTOCOL_UDP) {
             info->src_port = 0;
             int stream = create_udp_socket(htonl(thread_group->dest_ip), info->dest_port);
-            //change_blocking_mode(stream, 1);
-            set_recv_timeout(stream, 50000);
             if (stream == -1) {
                 log({
                     printf("WARN: udp socket for ");
@@ -770,6 +761,8 @@ int main(int argc, char *argv[]) {
         printf("Usage: %s [ip of adhoc-server] [optional: config file path (default is 'config')]", argv[0]);
         exit(EXIT_FAILURE);
     }
+    in_addr_t server_ip = resolve_hostname(argv[1]);
+    if (!server_ip) exit(EXIT_FAILURE);
     pthread_rwlock_init(&deletion, NULL);
     pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
@@ -780,19 +773,16 @@ int main(int argc, char *argv[]) {
         perror("ERROR: Failed to open config file");
         exit(EXIT_FAILURE);
     }
-    int server = create_connected_socket(inet_addr(argv[1]), SERVER_PORT, 0, 0);
+    int server = create_connected_socket(server_ip, SERVER_PORT, 0, 0);
     if (server == -1) {
         printf("ERROR: Couldn't connect to adhoc server.\n");
         exit(EXIT_FAILURE);
     }
-    //change_blocking_mode(server, 1);
-    set_recv_timeout(server, 50000);
     int peer_listener = create_listen_socket(INADDR_ANY, TUNNEL_PORT);
     if (peer_listener == -1) {
         printf("ERROR: Couldn't create peer listening socket.\n");
         exit(EXIT_FAILURE);
     }
-    set_recv_timeout(peer_listener, 5000000);
     uint8_t opcode = OPCODE_TUNNEL_LOGIN;
     send(server, &opcode, 1, 0);
 

@@ -60,8 +60,6 @@ int main(int argc, char * argv[])
     // Create Listening Socket
     //int server = create_listen_socket(INADDR_ANY, SERVER_PORT);
     int server = create_listen_socket(inet_addr("0.0.0.0"), SERVER_PORT);
-    // Make Socket Nonblocking
-    change_blocking_mode(server, 1);
     
     // Created Listening Socket
     if(server != -1)

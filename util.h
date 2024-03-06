@@ -7,6 +7,8 @@
 #define connkey(ip, loc, rem) (((uint64_t)(ip) << 32) + ((uint64_t)(loc) << 16) + (uint64_t)(rem))
 #define is_virt_ip(ip) ((ip) >= SUBNET_BASE && (ip) < SUBNET_BASE + SUBNET_SIZE)
 
+in_addr_t resolve_hostname(const char *hostname);
+
 int set_recv_timeout(int socket, unsigned long secs);
 
 void print_ip(uint32_t ip);

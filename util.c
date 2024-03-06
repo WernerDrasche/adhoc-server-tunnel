@@ -1,11 +1,29 @@
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include "util.h"
 #include "config.h"
+
+in_addr_t resolve_hostname(const char *hostname) {
+    struct hostent *host = gethostbyname(hostname);
+    if (host == NULL) {
+        printf("ERROR: failed to resolve hostname %s", hostname);
+        herror(NULL);
+        return 0;
+    }
+    in_addr_t addr = *(in_addr_t *)host->h_addr_list[0];
+    printf("Resolving %s to ", hostname);
+    print_ip(addr);
+    puts("");
+    return addr;
+}
 
 int set_recv_timeout(int socket, unsigned long usecs) {
     struct timeval timeout;
@@ -29,6 +47,7 @@ int create_udp_socket(in_addr_t ip, uint16_t port)
     if (fd != -1)
     {
         enable_address_reuse(fd);
+        change_blocking_mode(fd, 1);
         struct sockaddr_in addr;
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
@@ -51,6 +70,7 @@ int create_connected_socket(in_addr_t dest_ip, uint16_t dest_port, in_addr_t src
     if (fd != -1)
     {
         enable_address_reuse(fd);
+        change_blocking_mode(fd, 1);
         struct sockaddr_in server;
         memset(&server, 0, sizeof(server));
         server.sin_family = AF_INET;
@@ -65,8 +85,18 @@ int create_connected_socket(in_addr_t dest_ip, uint16_t dest_port, in_addr_t src
         }
         server.sin_addr.s_addr = dest_ip;
         server.sin_port = htons(dest_port);
-        int result = connect(fd, (struct sockaddr *)&server, sizeof(server));
-        if (result != -1) return fd;
+        int conn_result = connect(fd, (struct sockaddr *)&server, sizeof(server));
+        if (conn_result != -1) {
+            return fd;
+        } else if (errno == EINPROGRESS) {
+            fd_set wfds;
+            FD_ZERO(&wfds);
+            FD_SET(fd, &wfds);
+            struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
+            int sel_result = select(fd + 1, NULL, &wfds, NULL, &tv);
+            if (sel_result > 0) return fd;
+            errno = ETIMEDOUT;
+        }
         perror("ERROR: Couldn't connect tcp socket");
         close(fd);
     }
@@ -84,7 +114,8 @@ int create_listen_socket(in_addr_t ip, uint16_t port)
     {
         // Enable Address Reuse
         enable_address_reuse(fd);
-        
+        change_blocking_mode(fd, 1);
+
         // Prepare Local Address Information
         struct sockaddr_in local;
         memset(&local, 0, sizeof(local));
