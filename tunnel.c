@@ -758,7 +758,7 @@ void garbage_collect() {
 
 int main(int argc, char *argv[]) {
     if (argc == 1) {
-        printf("Usage: %s [ip of adhoc-server] [optional: config file path (default is 'config')]", argv[0]);
+        printf("Usage: %s [ip of adhoc-server] [optional: config file path (default is 'config')]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
     in_addr_t server_ip = resolve_hostname(argv[1]);
