@@ -409,7 +409,6 @@ void *dmux_thread(void *arg) {
                         break;
                     }
                 }
-                create_mux_threads(thread_group);
             }
             pthread_rwlock_unlock(&deletion);
             continue;
@@ -586,7 +585,6 @@ void *mux_thread(void *arg) {
                 pthread_mutex_lock(lock);
                 sendall(dest, buffer, 1 + HEADER_SIZE, 0, 0);
                 pthread_mutex_unlock(lock);
-                create_mux_threads(info->common);
                 break;
             }
         } else if (info->protocol == PROTOCOL_UDP) {
@@ -715,7 +713,10 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
             .protocol = port.protocol,
         };
         log({
-            printf("Creating thread ");
+            if (repair_from)
+                printf("Restoring thread ");
+            else 
+                printf("Creating thread ");
             print_thread(info);
             puts("");
         });
@@ -761,14 +762,20 @@ void garbage_collect() {
             continue;
         }
         struct ThreadInfo **to_delete = NULL;
+        bool repair = false;
         for (struct ThreadInfo *current = thread_group->info; current != NULL; current = current->next) {
             if (current->stop)
                 arrput(to_delete, current);
+            // src_port must be one of the ports specified in game, but checking that is slow atm
+            if (current->protocol == PROTOCOL_TCP && current->src_port != 0)
+                repair = true;
         }
         for (int i = 0; i < arrlen(to_delete); ++i) {
             delete_thread(to_delete[i]);
         }
         arrfree(to_delete);
+        if (repair)
+            create_mux_threads(thread_group);
     }
     pthread_rwlock_unlock(&deletion);
 }
