@@ -913,7 +913,7 @@ int main(int argc, char *argv[]) {
                     printf("Got a peer (mode listen) ");
                     print_ip(packet.virt_ip);
                     printf(" behind tunnel ");
-                    print_ip(packet.pub_ip);
+                    print_ip(packet.ip);
                     puts("");
                 });
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
