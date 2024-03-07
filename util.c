@@ -137,7 +137,7 @@ int create_listen_socket(in_addr_t ip, uint16_t port)
         }
         
         // Notify User
-        else perror("ERROR: Couldn't bind tcp socket\n");
+        else perror("ERROR: Couldn't bind tcp socket");
         
         // Close Socket
         close(fd);
