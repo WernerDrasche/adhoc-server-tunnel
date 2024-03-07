@@ -137,7 +137,7 @@ int create_listen_socket(in_addr_t ip, uint16_t port)
         }
         
         // Notify User
-        else printf("%s: bind returned %d.\n", __func__, bindresult);
+        else perror("%s: bind returned %d.\n", __func__, bindresult);
         
         // Close Socket
         close(fd);
