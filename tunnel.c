@@ -242,7 +242,7 @@ void delete_group(struct ThreadGroupInfo *group_info) {
     group_info->dest_ip = 0;
     struct Tunnel *tunnel = group_info->tunnel;
     if (--tunnel->refcount == 0) {
-        tunnel->stop = true;
+        delete_tunnel(tunnel);
     }
     log({
         printf("Successfully deleted thread-group ");
@@ -349,6 +349,8 @@ void *dmux_thread(void *arg) {
                     pthread_rwlock_unlock(&deletion);
                     continue;
                 }
+                pthread_rwlock_unlock(&deletion);
+                pthread_rwlock_wrlock(&deletion);
                 for (struct ThreadInfo *current = thread_group->info; current != NULL; current = current->next) {
                     if (current->src_port == 0 && current->protocol == PROTOCOL_TCP) {
                         delete_thread(current);
