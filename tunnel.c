@@ -886,11 +886,6 @@ int main(int argc, char *argv[]) {
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.pub_ip, MODE_CONNECT);
                 if (tunnel == NULL) continue;
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
-                if (thread_group->dest_ip) {
-                    pthread_rwlock_wrlock(&deletion);
-                    delete_group(thread_group);
-                    pthread_rwlock_unlock(&deletion);
-                }
                 *thread_group = (struct ThreadGroupInfo){
                     .group = current_group,
                     .game = current_game,
