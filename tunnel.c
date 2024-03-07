@@ -851,7 +851,7 @@ int main(int argc, char *argv[]) {
                 clear_rxbuf(&rx, 1);
                 print_game(&games[current_game]);
             } else if (rx.buf[0] == OPCODE_PEERS) {
-                puts("got a peer");
+                puts("got a peer (mode connect)");
                 SceNetAdhocctlPeerPacketS2T packet = *(SceNetAdhocctlPeerPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.pub_ip, MODE_CONNECT);
@@ -869,6 +869,7 @@ int main(int argc, char *argv[]) {
                 passive_mode = true;
                 clear_rxbuf(&rx, 1);
             } else if (rx.buf[0] == OPCODE_LISTEN) {
+                puts("got a peer (mode listen)")
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
