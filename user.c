@@ -698,8 +698,9 @@ void disconnect_user(SceNetAdhocctlUserNode * user)
         SceNetAdhocctlUserNode * peer;
         for (peer = user->group->player; peer != NULL && peer->resolver.ip != user->resolver.ip; peer = peer->group_next);
         bool disconnect_from_user = peer == NULL;
-        
+    
         // Iterate remaining Group Players
+        peer = user->group->player;
         while(peer != NULL)
         {
             uint32_t ip;
