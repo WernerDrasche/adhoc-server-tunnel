@@ -255,13 +255,6 @@ void delete_group(struct ThreadGroupInfo *group_info) {
 
 bool handle_connect(int server, struct ReceiveBuffer *rx, SceNetAdhocctlConnectPacketS2T packet) {
     bool passive_mode = true;
-    log({
-        printf("Local device ");
-        print_ip(packet.ip);
-        printf(" was assigned virtual ip ");
-        print_ip(packet.virt_ip);
-        puts("");
-    });
     local_ips[packet.virt_ip - SUBNET_BASE] = packet.ip;
     hmput(virt_ips, packet.ip, packet.virt_ip);
     int i;
