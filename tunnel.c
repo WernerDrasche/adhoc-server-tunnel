@@ -498,8 +498,10 @@ struct Tunnel *get_or_create_tunnel(int sock, uint32_t ip, enum TunnelCreationMo
     }
     if (stream == -1) {
         log({
+            int errno_old = errno;
             printf("ERROR: Couldn't create connection to tunnel ");
             print_ip(ip);
+            errno = errno_old;
             perror(NULL);
         });
         return NULL;
