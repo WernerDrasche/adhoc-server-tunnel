@@ -718,6 +718,11 @@ void create_mux_threads(struct ThreadGroupInfo *thread_group) {
             .dest_port = port.port,
             .protocol = port.protocol,
         };
+        log({
+            printf("Creating thread ");
+            print_thread(info);
+            puts("");
+        });
         if (info->protocol == PROTOCOL_TCP) {
             int server = create_listen_socket(htonl(thread_group->dest_ip), info->dest_port);
             info->stream = server;
@@ -848,9 +853,15 @@ int main(int argc, char *argv[]) {
                 rx.pos += result;
             }
             if (rx.buf[0] == OPCODE_CONNECT) {
-                puts("got a connect");
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
+                log({
+                    printf("Got a connect from ");
+                    print_ip(packet.virt_ip);
+                    printf(" with local ip ");
+                    print_ip(packet.ip);
+                    puts("");
+                });
                 passive_mode = handle_connect(server, &rx, packet);
             } else if (rx.buf[0] == OPCODE_PORTS) {
                 SceNetAdhocctlPortPacketS2T packet = *(SceNetAdhocctlPortPacketS2T *)rx.buf;
@@ -867,9 +878,15 @@ int main(int argc, char *argv[]) {
                 clear_rxbuf(&rx, 1);
                 print_game(&games[current_game]);
             } else if (rx.buf[0] == OPCODE_PEERS) {
-                puts("got a peer (mode connect)");
                 SceNetAdhocctlPeerPacketS2T packet = *(SceNetAdhocctlPeerPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
+                log({
+                    printf("Got a peer (mode connect) ");
+                    print_ip(packet.virt_ip);
+                    printf(" behind tunnel ");
+                    print_ip(packet.pub_ip);
+                    puts("");
+                });
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.pub_ip, MODE_CONNECT);
                 if (tunnel == NULL) continue;
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
@@ -890,9 +907,15 @@ int main(int argc, char *argv[]) {
                 passive_mode = true;
                 clear_rxbuf(&rx, 1);
             } else if (rx.buf[0] == OPCODE_LISTEN) {
-                puts("got a peer (mode listen)");
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
+                log({
+                    printf("Got a peer (mode listen) ");
+                    print_ip(packet.virt_ip);
+                    printf(" behind tunnel ");
+                    print_ip(packet.pub_ip);
+                    puts("");
+                });
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
                 if (thread_group->dest_ip) continue;
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.ip, MODE_LISTEN);
@@ -913,9 +936,13 @@ int main(int argc, char *argv[]) {
                 pthread_rwlock_init(&thread_group->rwlock, NULL);
                 create_mux_threads(thread_group);
             } else if (rx.buf[0] == OPCODE_DISCONNECT) {
-                puts("got a disconnect");
                 SceNetAdhocctlDisconnectPacketS2C packet = *(SceNetAdhocctlDisconnectPacketS2C *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
+                log({
+                    printf("Got a disconnect from ");
+                    print_ip(packet.ip);
+                    puts("");
+                });
                 pthread_rwlock_wrlock(&deletion);
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.ip - SUBNET_BASE];
                 if (thread_group->dest_ip != 0)
