@@ -415,6 +415,7 @@ void *dmux_thread(void *arg) {
                         break;
                     }
                 }
+                create_mux_threads(thread_group);
             }
             pthread_rwlock_unlock(&deletion);
             continue;
@@ -589,6 +590,7 @@ void *mux_thread(void *arg) {
                 pthread_mutex_lock(lock);
                 sendall(dest, buffer, 1 + HEADER_SIZE, 0, 0);
                 pthread_mutex_unlock(lock);
+                create_mux_threads(info->common);
                 break;
             }
         } else if (info->protocol == PROTOCOL_UDP) {
@@ -696,15 +698,25 @@ void *mux_thread_server(void *arg) {
 
 void create_mux_threads(struct ThreadGroupInfo *thread_group) {
     struct Port *ports = games[thread_group->game].ports;
-    struct ThreadInfo *prev = NULL;
+    struct ThreadInfo *prev = thread_group->info;
+    struct ThreadInfo *repair_from = prev;
     pthread_rwlock_wrlock(&thread_group->rwlock);
     for (int i = 0; i < arrlen(ports); ++i) {
+        struct Port port = ports[i];
+        if (repair_from) {
+            struct ThreadInfo *current;
+            for (current = repair_from; current != NULL; current = current->next) {
+                if (current->dest_port == port.port && current->protocol == port.protocol)
+                    break;
+            }
+            if (current) continue;
+        }
         struct ThreadInfo *info = malloc(sizeof(struct ThreadInfo));
         *info = (struct ThreadInfo){
             .common = thread_group,
             .next = prev,
-            .dest_port = ports[i].port,
-            .protocol = ports[i].protocol,
+            .dest_port = port.port,
+            .protocol = port.protocol,
         };
         if (info->protocol == PROTOCOL_TCP) {
             int server = create_listen_socket(htonl(thread_group->dest_ip), info->dest_port);
