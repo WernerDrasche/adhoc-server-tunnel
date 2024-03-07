@@ -694,6 +694,7 @@ void disconnect_user(SceNetAdhocctlUserNode * user)
         {
             virt_ips[user->virt_ip - SUBNET_BASE] = (SceNetEtherAddr){0};
             tunnel_disc.base.opcode = OPCODE_DISCONNECT;
+            tunnel_disc.ip = user->virt_ip;
         }
         
         // Iterate remaining Group Players
@@ -709,10 +710,7 @@ void disconnect_user(SceNetAdhocctlUserNode * user)
                 }
                 else
                 {
-                    tunnel_disc.ip = user->virt_ip;
                     send(peer->tunnel->stream, &tunnel_disc, sizeof(tunnel_disc), 0);
-                    tunnel_disc.ip = peer->virt_ip;
-                    send(user->tunnel->stream, &tunnel_disc, sizeof(tunnel_disc), 0);
                     ip = htonl(user->virt_ip);
                 }
             }
