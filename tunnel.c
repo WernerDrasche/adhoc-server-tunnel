@@ -425,19 +425,19 @@ void *dmux_thread(void *arg) {
             struct Connection *conn = thread_group->conn_map[i].value;
             pthread_mutex_lock(&conn->lock);
             if (header.src_port) {
-                log({
-                    printf("DMUX: Forwarding %d bytes over TCP from ", header.len);
-                    print_header(&header, true);
-                    puts("");
-                });
+                //log({
+                    //printf("DMUX: Forwarding %d bytes over TCP from ", header.len);
+                    //print_header(&header, true);
+                    //puts("");
+                //});
                 sendall(conn->stream, buffer, header.len, 0, 0);
             } else {
                 uint32_t local_ip = local_ips[header.dest_ip - SUBNET_BASE];
-                log({
-                    printf("DMUX: Forwarding %d bytes over UDP from ", header.len);
-                    print_header(&header, true);
-                    puts("");
-                });
+                //log({
+                    //printf("DMUX: Forwarding %d bytes over UDP from ", header.len);
+                    //print_header(&header, true);
+                    //puts("");
+                //});
                 if (local_ip != 0)
                     sendall(conn->stream, buffer, header.len, htonl(local_ip), header.dest_port);
                 else {
@@ -607,11 +607,11 @@ void *mux_thread(void *arg) {
         header->len = n;
         pthread_mutex_lock(lock);
         sendall(dest, buffer, n + HEADER_SIZE, 0, 0);
-        log({
-            printf("MUX: Forwarding %d bytes via ", n);
-            print_header(header, false);
-            puts("");
-        });
+        //log({
+            //printf("MUX: Forwarding %d bytes via ", n);
+            //print_header(header, false);
+            //puts("");
+        //});
         pthread_mutex_unlock(lock);
     }
     free(buffer);
