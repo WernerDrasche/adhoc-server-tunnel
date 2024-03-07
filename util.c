@@ -94,7 +94,7 @@ int create_connected_socket(in_addr_t dest_ip, uint16_t dest_port, in_addr_t src
             FD_SET(fd, &wfds);
             struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
             int sel_result = select(fd + 1, NULL, &wfds, NULL, &tv);
-            if (sel_result > 0 && fd != -1) return fd;
+            if (sel_result > 0) return fd;
             else if (sel_result == 0) errno = ETIMEDOUT;
         }
         perror("ERROR: Couldn't connect tcp socket");
