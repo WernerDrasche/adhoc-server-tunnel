@@ -309,7 +309,8 @@ void *dmux_thread(void *arg) {
         //uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
         uint64_t key = header.src_port ? connkey(header.dest_ip, header.dest_port, header.src_port) : header.dest_port;
         uint16_t len = header.len;
-        pthread_rwlock_rdlock(&deletion);
+        while (pthread_rwlock_tryrdlock(&deletion) && !tunnel->stop);
+        if (tunnel->stop) break;
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
         //log({
         //    printf("sending %d bytes from ", len);
