@@ -767,6 +767,7 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&log_lock, NULL);
     signal(SIGINT, interrupt);
     signal(SIGTERM, interrupt);
+    signal(SIGPIPE, SIG_IGN);
     char *config_name = argc == 3 ? argv[2] : "config";
     FILE *config_file = fopen(config_name, "r");
     if (config_file == NULL) {
