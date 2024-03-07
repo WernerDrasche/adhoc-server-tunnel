@@ -795,7 +795,7 @@ int main(int argc, char *argv[]) {
         if (result) {
             if (feof(config_file)) {
                 if (result == 1) break;
-                printf("ERROR: reached EOF while parsing mac address");
+                printf("ERROR: reached EOF while parsing mac address\n");
             } else {
                 perror("ERROR: during parsing of mac address");
             }
@@ -807,7 +807,7 @@ int main(int argc, char *argv[]) {
         if (result) {
             if (feof(config_file)) {
                 if (result == 1) break;
-                printf("ERROR: reached EOF while parsing ip address");
+                printf("ERROR: reached EOF while parsing ip address\n");
             } else {
                 perror("ERROR: during parsing of ip address");
             }
@@ -823,7 +823,10 @@ int main(int argc, char *argv[]) {
     bool passive_mode = true;
     while (running) {
         int result = recv(server, rx.buf + rx.pos, RECV_BUFSIZE - rx.pos, 0);
-        if (result == 0 || (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) break;
+        if (result == 0 || (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+            puts("Connection to server broke");
+            break;
+        }
         if (result > 0 || rx.pos > 0) {
             if (result > 0) {
                 rx.pos += result;
