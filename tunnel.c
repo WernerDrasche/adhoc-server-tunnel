@@ -870,9 +870,10 @@ int main(int argc, char *argv[]) {
             } else if (rx.buf[0] == OPCODE_LISTEN) {
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
+                struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
+                if (thread_group->dest_ip) continue;
                 struct Tunnel *tunnel = get_or_create_tunnel(peer_listener, packet.ip, MODE_LISTEN);
                 if (tunnel == NULL) continue;
-                struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
                 size_t game = 0;
                 for (int i = 0; i < arrlen(games); ++i) {
                     if (!strncmp(games[i].game.data, packet.game.data, ADHOCCTL_GROUPNAME_LEN)) {
