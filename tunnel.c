@@ -869,7 +869,7 @@ int main(int argc, char *argv[]) {
                 passive_mode = true;
                 clear_rxbuf(&rx, 1);
             } else if (rx.buf[0] == OPCODE_LISTEN) {
-                puts("got a peer (mode listen)")
+                puts("got a peer (mode listen)");
                 SceNetAdhocctlConnectPacketS2T packet = *(SceNetAdhocctlConnectPacketS2T *)rx.buf;
                 clear_rxbuf(&rx, sizeof(packet));
                 struct ThreadGroupInfo *thread_group = &thread_groups[packet.virt_ip - SUBNET_BASE];
