@@ -203,6 +203,8 @@ void delete_tunnel(struct Tunnel *tunnel) {
         print_ip(tunnel->ip);
         puts("");
     });
+    // prevents double deletion
+    tunnel->refcount = 0;
     for (int i = 0; i < SUBNET_SIZE; ++i) {
         struct ThreadGroupInfo *thread_group = &thread_groups[i];
         if (thread_group->dest_ip == 0) continue;
