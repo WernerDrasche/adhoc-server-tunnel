@@ -453,7 +453,13 @@ void *dmux_thread(void *arg) {
                 }
             }
             pthread_mutex_unlock(&conn->lock);
-        } else printf("WARN: connection does not exist.\n");
+        } else {
+            log({
+                printf("WARN: connection ");
+                print_header(&header, true);
+                puts(" does not exist");
+            });
+        }
         pthread_rwlock_unlock(&thread_group->rwlock);
         pthread_rwlock_unlock(&deletion);
     }
