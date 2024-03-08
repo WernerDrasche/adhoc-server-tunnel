@@ -302,8 +302,9 @@ void *dmux_thread(void *arg) {
         //uint64_t key = header.src_port ? *(uint64_t *)(buffer + 6) : header.dest_port;
         uint64_t key = header.src_port ? connkey(header.dest_ip, header.dest_port, header.src_port) : header.dest_port;
         uint16_t len = header.len;
-        while (pthread_rwlock_tryrdlock(&deletion) && !tunnel->stop);
-        if (tunnel->stop) break;
+        while (pthread_rwlock_tryrdlock(&deletion)) {
+            if (tunnel->stop) goto exit;
+        }
         struct ThreadGroupInfo *thread_group = &thread_groups[header.src_ip - SUBNET_BASE];
         //log({
         //    printf("sending %d bytes from ", len);
@@ -345,11 +346,15 @@ void *dmux_thread(void *arg) {
                     pthread_rwlock_unlock(&deletion);
                     continue;
                 }
-                pthread_rwlock_unlock(&deletion);
-                pthread_rwlock_wrlock(&deletion);
+                bool triggered_deletion = false;
                 for (struct ThreadInfo *current = thread_group->info; current != NULL; current = current->next) {
-                    if (current->src_port == 0 && current->protocol == PROTOCOL_TCP) {
+                    if (current->dest_port == header.src_port && current->protocol == PROTOCOL_TCP) {
+                        pthread_rwlock_unlock(&deletion);
+                        while (pthread_rwlock_trywrlock(&deletion)) {
+                            if (tunnel->stop) goto exit;
+                        }
                         delete_thread(current);
+                        triggered_deletion = true;
                         break;
                     }
                 }
@@ -374,6 +379,7 @@ void *dmux_thread(void *arg) {
                     .dest_port = header.src_port,
                     .protocol = PROTOCOL_TCP,
                     .stream = stream,
+                    .triggered_deletion = triggered_deletion,
                 };
                 pthread_rwlock_wrlock(&thread_group->rwlock);
                 hmput(thread_group->conn_map, key, conn);
@@ -451,6 +457,7 @@ void *dmux_thread(void *arg) {
         pthread_rwlock_unlock(&thread_group->rwlock);
         pthread_rwlock_unlock(&deletion);
     }
+exit:
     free(buffer);
     tunnel->stop = true;
     return NULL;
@@ -761,21 +768,21 @@ void garbage_collect() {
             delete_tunnel(thread_group->tunnel);
             continue;
         }
-        struct ThreadInfo **to_delete = NULL;
         bool repair = false;
+        struct ThreadInfo **to_delete = NULL;
         for (struct ThreadInfo *current = thread_group->info; current != NULL; current = current->next) {
-            if (current->stop)
+            if (current->stop) {
                 arrput(to_delete, current);
-            // src_port must be one of the ports specified in game, but checking that is slow atm
-            if (current->protocol == PROTOCOL_TCP && current->src_port != 0)
-                repair = true;
+                if (current->triggered_deletion)
+                    repair = true;
+            }
         }
+        if (repair)
+            create_mux_threads(thread_group);
         for (int i = 0; i < arrlen(to_delete); ++i) {
             delete_thread(to_delete[i]);
         }
         arrfree(to_delete);
-        if (repair)
-            create_mux_threads(thread_group);
     }
     pthread_rwlock_unlock(&deletion);
 }
