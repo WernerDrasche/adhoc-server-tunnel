@@ -64,6 +64,7 @@ struct ThreadInfo {
     uint16_t dest_port;
     uint8_t protocol;
     bool stop;
+    bool triggered_deletion;
 };
 
 #define TCP_CONNECT 0
