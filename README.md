@@ -17,10 +17,12 @@ Somebody has to set up the server and forward port 27312:
 
 How to set up tunnel (each participating local network has to run it):
   - add the addresses in the subnet to some interface (loopback doesn't work though I think)
-    - on ubuntu: sudo ip address add 192.168.1.1/32 dev wlan0 -> temporary
-                 modify netplan -> permanent
-    - on OpenBSD: something with ifconfig -> temporary
-                  inet 192.168.1.x 255.255.255.240 -> add these lines to /etc/hostname.{interface_name} for permanent
+    - on ubuntu:
+      - sudo ip address add 192.168.1.1/32 dev wlan0 -> temporary
+      - modify netplan -> permanent
+    - on OpenBSD:
+      - something with ifconfig -> temporary
+      - inet 192.168.1.x 255.255.255.240 -> add these lines to /etc/hostname.{interface_name} for permanent
   - add route in router to point this subnet to the tunnel server ip
   - modify config file: each line has mac_addres -> local_ip_address mapping e.g. 11:22:33:44:55:66 -> 192.168.178.55
   - make tunnel
